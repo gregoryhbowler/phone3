@@ -1568,22 +1568,26 @@ class PatchUnknown {
             // AD envelope mode - attack then decay
             const attack = this.envelopeAttack || 0.01;
             const decay = this.envelopeDecay || 0.5;
+            const now = this.ctx.currentTime;
 
             this.cells.forEach((cell, index) => {
                 if (cell && cell.params && cell.params.gain) {
-                    const baseGain = this.baseGains.get(index) || cell.params.gain.value;
+                    const baseGain = this.baseGains.get(index);
+                    if (baseGain === undefined || baseGain < 0.001) return;
+
+                    const gainParam = cell.params.gain;
 
                     // Cancel any scheduled changes
-                    cell.params.gain.cancelScheduledValues(this.ctx.currentTime);
+                    gainParam.cancelScheduledValues(now);
 
-                    // Start from near zero
-                    cell.params.gain.setValueAtTime(0.001, this.ctx.currentTime);
+                    // Start from silence
+                    gainParam.setValueAtTime(0, now);
 
-                    // Attack to peak (slightly boosted)
-                    cell.params.gain.setTargetAtTime(baseGain * 1.2, this.ctx.currentTime, attack);
+                    // Attack: ramp up to peak
+                    gainParam.linearRampToValueAtTime(baseGain * 1.5, now + attack);
 
-                    // Decay back to near silence
-                    cell.params.gain.setTargetAtTime(0.001, this.ctx.currentTime + attack * 3, decay);
+                    // Decay: ramp down to near silence
+                    gainParam.linearRampToValueAtTime(0.001, now + attack + decay);
                 }
             });
         } else {

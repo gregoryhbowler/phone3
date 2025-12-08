@@ -174,24 +174,110 @@ html, body {
     color: #777;
 }
 
-/* Scale selector row */
-#scale-row {
-    height: 44px;
-    min-height: 44px;
-    display: flex;
-    align-items: center;
-    padding: 4px;
-    gap: 8px;
+/* Control rows container */
+#control-rows {
+    flex-shrink: 0;
     background: #0c0c0c;
     border-top: 1px solid #1a1a1a;
     border-bottom: 1px solid #1a1a1a;
 }
 
+/* Root note row */
+#root-row {
+    height: 36px;
+    display: flex;
+    align-items: center;
+    padding: 4px;
+    border-bottom: 1px solid #151515;
+}
+
 #root-selector {
     display: flex;
     gap: 2px;
-    overflow-x: auto;
-    flex-shrink: 0;
+    flex: 1;
+    justify-content: space-between;
+}
+
+/* Scale selector row */
+#scale-row {
+    height: 36px;
+    display: flex;
+    align-items: center;
+    padding: 4px;
+    border-bottom: 1px solid #151515;
+}
+
+#scale-selector {
+    flex: 1;
+    display: flex;
+    gap: 4px;
+    overflow-x: scroll;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    touch-action: pan-x;
+}
+
+#scale-selector::-webkit-scrollbar {
+    display: none;
+}
+
+/* Envelope row */
+#env-row {
+    height: 36px;
+    display: flex;
+    align-items: center;
+    padding: 4px 8px;
+    gap: 8px;
+}
+
+.env-label {
+    font-size: 8px;
+    color: #555;
+    font-family: 'Courier New', monospace;
+    text-transform: uppercase;
+}
+
+.env-slider {
+    flex: 1;
+    height: 4px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: #2a2a2a;
+    border-radius: 2px;
+    outline: none;
+}
+
+.env-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    background: #4a4a4a;
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+.env-slider::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    background: #4a4a4a;
+    border-radius: 50%;
+    cursor: pointer;
+    border: none;
+}
+
+#env-row.active .env-label {
+    color: #aa8;
+}
+
+#env-row.active .env-slider::-webkit-slider-thumb {
+    background: #8a8a5a;
+}
+
+#env-row.active .env-slider::-moz-range-thumb {
+    background: #8a8a5a;
 }
 
 .root-btn {
@@ -217,23 +303,6 @@ html, body {
 
 .root-btn:active {
     transform: scale(0.95);
-}
-
-#scale-selector {
-    flex: 1;
-    display: flex;
-    gap: 4px;
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding-right: 4px;
-    min-width: 0;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-}
-
-#scale-selector::-webkit-scrollbar {
-    display: none;
 }
 
 .scale-btn {

@@ -23,10 +23,20 @@
         </div>
         <div id="play-mode" class="hidden">
             <div id="macro-grid"></div>
-            <div id="scale-row">
-                <div id="root-selector"></div>
-                <div id="scale-selector"></div>
-                <button id="env-toggle" class="env-btn" aria-label="Toggle envelope">◇</button>
+            <div id="control-rows">
+                <div id="root-row">
+                    <div id="root-selector"></div>
+                </div>
+                <div id="scale-row">
+                    <div id="scale-selector"></div>
+                </div>
+                <div id="env-row">
+                    <button id="env-toggle" class="env-btn" aria-label="Toggle envelope">◇</button>
+                    <span class="env-label">ATK</span>
+                    <input type="range" id="env-attack" class="env-slider" min="0" max="100" value="1">
+                    <span class="env-label">DCY</span>
+                    <input type="range" id="env-decay" class="env-slider" min="0" max="100" value="50">
+                </div>
             </div>
             <div id="keyboard"></div>
         </div>

@@ -477,11 +477,8 @@ function createScaleSelector() {
         const btn = document.createElement('button');
         btn.className = 'scale-btn' + (scale === selectedScale ? ' active' : '');
         btn.textContent = scale;
+        // Use click only - touchstart with preventDefault blocks scrolling
         btn.addEventListener('click', () => selectScale(scale));
-        btn.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            selectScale(scale);
-        });
         scaleSelector.appendChild(btn);
     });
 
@@ -494,6 +491,27 @@ function createScaleSelector() {
             toggleEnvelope();
         });
     }
+
+    // Envelope sliders
+    const envAttack = document.getElementById('env-attack');
+    const envDecay = document.getElementById('env-decay');
+    const envRow = document.getElementById('env-row');
+
+    if (envAttack) {
+        envAttack.addEventListener('input', (e) => {
+            // Map 0-100 to 0.001-0.5 seconds (attack should be quick)
+            const attack = 0.001 + (e.target.value / 100) * 0.499;
+            synth.setEnvelopeAttack(attack);
+        });
+    }
+
+    if (envDecay) {
+        envDecay.addEventListener('input', (e) => {
+            // Map 0-100 to 0.05-3 seconds
+            const decay = 0.05 + (e.target.value / 100) * 2.95;
+            synth.setEnvelopeDecay(decay);
+        });
+    }
 }
 
 // Toggle AD envelope mode
@@ -502,10 +520,16 @@ function toggleEnvelope() {
     synth.setEnvelopeEnabled(envelopeEnabled);
 
     const envToggle = document.getElementById('env-toggle');
+    const envRow = document.getElementById('env-row');
+
     if (envToggle) {
         envToggle.classList.toggle('active', envelopeEnabled);
         // ◇ = drone/hold mode, ◆ = envelope mode
         envToggle.textContent = envelopeEnabled ? '◆' : '◇';
+    }
+
+    if (envRow) {
+        envRow.classList.toggle('active', envelopeEnabled);
     }
 }
 
