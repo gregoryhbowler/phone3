@@ -41,8 +41,18 @@ async function init() {
         startAnimationLoop();
     });
 
-    // Prevent default touch behaviors
-    document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+    // Prevent default touch behaviors only on grid/keyboard (not controls)
+    document.addEventListener('touchmove', e => {
+        // Allow touch on scale selector, sliders, and control rows
+        const target = e.target;
+        if (target.closest('#scale-selector') ||
+            target.closest('#scale-row') ||
+            target.closest('.env-slider') ||
+            target.classList.contains('env-slider')) {
+            return; // Allow native scroll/drag
+        }
+        e.preventDefault();
+    }, { passive: false });
 }
 
 // Setup header buttons
