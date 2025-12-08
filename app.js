@@ -758,6 +758,10 @@ function createSeqLengthSelector() {
         btn.className = 'seq-len-btn' + (len === seqLength ? ' active' : '');
         btn.textContent = len;
         btn.addEventListener('click', () => setSeqLength(len));
+        btn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            setSeqLength(len);
+        }, { passive: false });
         selector.appendChild(btn);
     }
 }
@@ -848,6 +852,10 @@ function createSeqGrid() {
         if (i >= seqLength) stepBtn.style.display = 'none';
 
         stepBtn.addEventListener('click', () => toggleSeqStep(i));
+        stepBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            toggleSeqStep(i);
+        }, { passive: false });
 
         stepsContainer.appendChild(stepBtn);
 
@@ -917,7 +925,16 @@ function setupSeqControls() {
     const transposeValue = document.getElementById('seq-transpose-value');
 
     playBtn.addEventListener('click', startSequencer);
+    playBtn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        startSequencer();
+    }, { passive: false });
+
     stopBtn.addEventListener('click', stopSequencer);
+    stopBtn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        stopSequencer();
+    }, { passive: false });
 
     tempoSlider.value = seqTempo;
     tempoValue.textContent = seqTempo;
