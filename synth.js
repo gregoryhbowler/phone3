@@ -1529,8 +1529,8 @@ class PatchUnknown {
         // Scale degree ratio
         const scaleRatio = scale[scaleIndex];
 
-        // Octave multiplier
-        const octaveRatio = Math.pow(2, octaveOffset);
+        // Octave multiplier - start one octave lower (0.5x base)
+        const octaveRatio = Math.pow(2, octaveOffset - 1);
 
         return rootRatio * scaleRatio * octaveRatio;
     }

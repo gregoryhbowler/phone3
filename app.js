@@ -576,7 +576,7 @@ function updateKeyboard() {
         const noteIndex = (selectedRoot + semitones) % 12;
 
         noteSpan.textContent = noteNames[noteIndex];
-        octaveSpan.textContent = 2 + octaveOffset;
+        octaveSpan.textContent = 1 + octaveOffset;
     });
 }
 
