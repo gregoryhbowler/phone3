@@ -1320,6 +1320,348 @@ class PatchUnknown {
             this.startKrell();
         }
     }
+
+    // ============== RECORDING ==============
+
+    startRecording() {
+        if (this.mediaRecorder && this.mediaRecorder.state === 'recording') return;
+
+        // Create a destination for recording
+        const dest = this.ctx.createMediaStreamDestination();
+        this.limiter.connect(dest);
+
+        this.recordedChunks = [];
+        this.mediaRecorder = new MediaRecorder(dest.stream, {
+            mimeType: 'audio/webm;codecs=opus'
+        });
+
+        this.mediaRecorder.ondataavailable = (e) => {
+            if (e.data.size > 0) {
+                this.recordedChunks.push(e.data);
+            }
+        };
+
+        this.mediaRecorder.onstop = () => {
+            const blob = new Blob(this.recordedChunks, { type: 'audio/webm' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `patch-unknown-${Date.now()}.webm`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        };
+
+        this.mediaRecorder.start();
+    }
+
+    stopRecording() {
+        if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+            this.mediaRecorder.stop();
+        }
+    }
+
+    // ============== NOTE PLAYING ==============
+
+    playNote(frequency, velocity = 0.8) {
+        // Check if note is already playing
+        if (this.playingNotes && this.playingNotes.has(frequency)) {
+            return;
+        }
+
+        if (!this.playingNotes) this.playingNotes = new Map();
+
+        // Create a simple but musical voice
+        const osc = this.ctx.createOscillator();
+        const osc2 = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        const filter = this.ctx.createBiquadFilter();
+
+        // Main oscillator
+        osc.type = 'sawtooth';
+        osc.frequency.value = frequency;
+
+        // Detuned second oscillator for richness
+        osc2.type = 'triangle';
+        osc2.frequency.value = frequency * 1.002; // Slight detune
+        osc2.detune.value = 7; // Slight additional detune
+
+        // Filter for warmth
+        filter.type = 'lowpass';
+        filter.frequency.value = Math.min(frequency * 4, 8000);
+        filter.Q.value = 1;
+
+        // Envelope
+        gain.gain.value = 0;
+        gain.gain.setTargetAtTime(velocity * 0.15, this.ctx.currentTime, 0.01);
+
+        // Connections
+        osc.connect(filter);
+        osc2.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.masterGain);
+
+        osc.start();
+        osc2.start();
+
+        this.playingNotes.set(frequency, { osc, osc2, gain, filter });
+    }
+
+    releaseNote(frequency) {
+        if (!this.playingNotes || !this.playingNotes.has(frequency)) return;
+
+        const note = this.playingNotes.get(frequency);
+
+        // Release envelope
+        note.gain.gain.cancelScheduledValues(this.ctx.currentTime);
+        note.gain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.15);
+
+        // Stop after release
+        setTimeout(() => {
+            try {
+                note.osc.stop();
+                note.osc2.stop();
+                note.gain.disconnect();
+            } catch (e) {}
+        }, 500);
+
+        this.playingNotes.delete(frequency);
+    }
+
+    // ============== MACRO SYSTEM ==============
+
+    getMacroAssignments() {
+        const assignments = [];
+
+        // Always include global controls
+        assignments.push({
+            label: 'VOL',
+            type: 'global',
+            param: 'masterGain',
+            value: this.masterGain.gain.value / 1.0,
+            min: 0,
+            max: 1
+        });
+
+        assignments.push({
+            label: 'REV',
+            type: 'global',
+            param: 'reverbMix',
+            value: 0.25,
+            min: 0,
+            max: 1
+        });
+
+        assignments.push({
+            label: 'DRFT',
+            type: 'global',
+            param: 'driftAmount',
+            value: this.driftAmount / 0.001,
+            min: 0,
+            max: 1
+        });
+
+        assignments.push({
+            label: 'KREL',
+            type: 'global',
+            param: 'krellDensity',
+            value: this.krellDensity,
+            min: 0,
+            max: 1
+        });
+
+        // Analyze active cells and add relevant controls
+        let oscCount = 0;
+        let modCount = 0;
+        let fxCount = 0;
+
+        this.cells.forEach((cell, index) => {
+            if (!cell || !cell.params) return;
+            if (assignments.length >= 16) return;
+
+            if (cell.category === 'osc' && oscCount < 4) {
+                oscCount++;
+                const suffix = oscCount > 1 ? oscCount : '';
+
+                if (cell.params.freq) {
+                    assignments.push({
+                        label: `FRQ${suffix}`,
+                        type: 'cell',
+                        cellIndex: index,
+                        param: 'freq',
+                        value: Math.log2(cell.params.freq.value / 27.5) / 6,
+                        min: 27.5,
+                        max: 1760
+                    });
+                }
+
+                if (cell.params.gain && assignments.length < 16) {
+                    assignments.push({
+                        label: `GN${suffix}`,
+                        type: 'cell',
+                        cellIndex: index,
+                        param: 'gain',
+                        value: cell.params.gain.value / 0.3,
+                        min: 0,
+                        max: 0.3
+                    });
+                }
+            }
+
+            if ((cell.category === 'mod' || cell.isModulator) && modCount < 3 && assignments.length < 16) {
+                modCount++;
+                const suffix = modCount > 1 ? modCount : '';
+
+                if (cell.params.freq || cell.params.rate) {
+                    const paramName = cell.params.freq ? 'freq' : 'rate';
+                    const paramValue = (cell.params.freq || cell.params.rate).value;
+                    assignments.push({
+                        label: `RT${suffix}`,
+                        type: 'cell',
+                        cellIndex: index,
+                        param: paramName,
+                        value: Math.min(paramValue / 10, 1),
+                        min: 0.01,
+                        max: 10
+                    });
+                }
+
+                if (cell.params.depth && assignments.length < 16) {
+                    assignments.push({
+                        label: `DPT${suffix}`,
+                        type: 'cell',
+                        cellIndex: index,
+                        param: 'depth',
+                        value: Math.min(cell.params.depth.value / 100, 1),
+                        min: 0,
+                        max: 100
+                    });
+                }
+            }
+
+            if (cell.category === 'fx' && fxCount < 2 && assignments.length < 16) {
+                fxCount++;
+                const suffix = fxCount > 1 ? fxCount : '';
+
+                if (cell.params.mix) {
+                    assignments.push({
+                        label: `MIX${suffix}`,
+                        type: 'cell',
+                        cellIndex: index,
+                        param: 'mix',
+                        value: cell.params.mix.value,
+                        min: 0,
+                        max: 1
+                    });
+                }
+
+                if (cell.params.time && assignments.length < 16) {
+                    assignments.push({
+                        label: `TIM${suffix}`,
+                        type: 'cell',
+                        cellIndex: index,
+                        param: 'time',
+                        value: cell.params.time.value / 2,
+                        min: 0,
+                        max: 2
+                    });
+                }
+            }
+
+            // Handle filters
+            if (cell.filter && assignments.length < 16) {
+                assignments.push({
+                    label: 'CUT',
+                    type: 'filter',
+                    cellIndex: index,
+                    param: 'frequency',
+                    value: Math.log2(cell.filter.frequency.value / 100) / 7,
+                    min: 100,
+                    max: 12000
+                });
+            }
+        });
+
+        // Fill remaining slots with useful global controls
+        while (assignments.length < 16) {
+            const remaining = 16 - assignments.length;
+            if (remaining >= 1) {
+                assignments.push({
+                    label: 'RATE',
+                    type: 'global',
+                    param: 'krellEventRate',
+                    value: 1 - (this.krellEventRate - 1000) / 20000,
+                    min: 1000,
+                    max: 20000
+                });
+            }
+            if (remaining >= 2) {
+                assignments.push({
+                    label: 'DCAY',
+                    type: 'global',
+                    param: 'decayRate',
+                    value: (this.decayRate - 0.999) / 0.001,
+                    min: 0.999,
+                    max: 1.0
+                });
+            }
+            break;
+        }
+
+        return assignments.slice(0, 16);
+    }
+
+    setMacroValue(_index, value, assignment) {
+        if (!assignment) return;
+
+        const normalizedValue = Math.max(0, Math.min(1, value));
+
+        if (assignment.type === 'global') {
+            switch (assignment.param) {
+                case 'masterGain':
+                    this.masterGain.gain.setTargetAtTime(normalizedValue, this.ctx.currentTime, 0.05);
+                    break;
+                case 'reverbMix':
+                    // Would need reverb send gain node reference
+                    break;
+                case 'driftAmount':
+                    this.driftAmount = normalizedValue * 0.001;
+                    break;
+                case 'krellDensity':
+                    this.krellDensity = normalizedValue;
+                    break;
+                case 'krellEventRate':
+                    this.krellEventRate = 1000 + (1 - normalizedValue) * 20000;
+                    break;
+                case 'decayRate':
+                    this.decayRate = 0.999 + normalizedValue * 0.001;
+                    break;
+            }
+        } else if (assignment.type === 'cell') {
+            const cell = this.cells[assignment.cellIndex];
+            if (!cell || !cell.params || !cell.params[assignment.param]) return;
+
+            const param = cell.params[assignment.param];
+            const range = assignment.max - assignment.min;
+            let newValue;
+
+            // Handle logarithmic frequency scaling
+            if (assignment.param === 'freq' && assignment.min > 20) {
+                newValue = assignment.min * Math.pow(assignment.max / assignment.min, normalizedValue);
+            } else {
+                newValue = assignment.min + normalizedValue * range;
+            }
+
+            param.setTargetAtTime(newValue, this.ctx.currentTime, 0.05);
+        } else if (assignment.type === 'filter') {
+            const cell = this.cells[assignment.cellIndex];
+            if (!cell || !cell.filter) return;
+
+            const newFreq = 100 * Math.pow(120, normalizedValue); // Log scale 100-12000 Hz
+            cell.filter.frequency.setTargetAtTime(newFreq, this.ctx.currentTime, 0.05);
+        }
+    }
 }
 
 window.PatchUnknown = PatchUnknown;

@@ -13,7 +13,22 @@
 </head>
 <body>
     <div id="app">
-        <div id="grid"></div>
+        <header id="header">
+            <div class="header-left"></div>
+            <button id="mode-toggle" class="header-btn" aria-label="Toggle play mode">▦</button>
+            <button id="record-btn" class="header-btn" aria-label="Record">○</button>
+        </header>
+        <div id="patch-mode">
+            <div id="grid"></div>
+        </div>
+        <div id="play-mode" class="hidden">
+            <div id="macro-grid"></div>
+            <div id="scale-row">
+                <div id="root-selector"></div>
+                <div id="scale-selector"></div>
+            </div>
+            <div id="keyboard"></div>
+        </div>
         <div id="start-overlay">
             <div class="start-content">
                 <pre class="logo">

@@ -5,6 +5,16 @@ let synth = null;
 let grid = null;
 let cellElements = [];
 
+// Mode state
+let currentMode = 'patch'; // 'patch' or 'play'
+let isRecording = false;
+
+// Play mode state
+let selectedRoot = 0; // 0 = C, 1 = C#, etc.
+let selectedScale = 'harmonic';
+let macroAssignments = [];
+let activeNotes = new Map(); // frequency -> oscillator for polyphonic playing
+
 // Cryptic cell assignments - these indices determine behavior
 // but the user should never understand the mapping
 const MELODIC_CELL = 0;   // Upper left - yearning arpeggios (Barbieri, Glass, Reich, Pärt)
@@ -24,12 +34,73 @@ async function init() {
         synth = new PatchUnknown();
         await synth.init();
 
+        setupHeader();
         createGrid();
+        createPlayMode();
         startAnimationLoop();
     });
 
     // Prevent default touch behaviors
     document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+}
+
+// Setup header buttons
+function setupHeader() {
+    const modeToggle = document.getElementById('mode-toggle');
+    const recordBtn = document.getElementById('record-btn');
+
+    modeToggle.addEventListener('click', toggleMode);
+    modeToggle.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        toggleMode();
+    });
+
+    recordBtn.addEventListener('click', toggleRecording);
+    recordBtn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        toggleRecording();
+    });
+}
+
+// Toggle between patch and play modes
+function toggleMode() {
+    const modeToggle = document.getElementById('mode-toggle');
+    const patchMode = document.getElementById('patch-mode');
+    const playMode = document.getElementById('play-mode');
+
+    if (currentMode === 'patch') {
+        currentMode = 'play';
+        modeToggle.textContent = '♩';
+        modeToggle.classList.add('play-mode');
+        patchMode.classList.add('hidden');
+        playMode.classList.remove('hidden');
+        updateMacros();
+    } else {
+        currentMode = 'patch';
+        modeToggle.textContent = '▦';
+        modeToggle.classList.remove('play-mode');
+        patchMode.classList.remove('hidden');
+        playMode.classList.add('hidden');
+        // Release any held notes
+        releaseAllNotes();
+    }
+}
+
+// Toggle recording
+function toggleRecording() {
+    const recordBtn = document.getElementById('record-btn');
+
+    if (!isRecording) {
+        synth.startRecording();
+        isRecording = true;
+        recordBtn.textContent = '●';
+        recordBtn.classList.add('recording');
+    } else {
+        synth.stopRecording();
+        isRecording = false;
+        recordBtn.textContent = '○';
+        recordBtn.classList.remove('recording');
+    }
 }
 
 // Create the 64-cell grid
@@ -263,6 +334,271 @@ document.addEventListener('visibilitychange', () => {
         startAnimationLoop();
     }
 });
+
+// ============== PLAY MODE ==============
+
+// Create the play mode interface
+function createPlayMode() {
+    createMacroGrid();
+    createScaleSelector();
+    createKeyboard();
+}
+
+// Create 16 macro knobs
+function createMacroGrid() {
+    const macroGrid = document.getElementById('macro-grid');
+    macroGrid.innerHTML = '';
+
+    for (let i = 0; i < 16; i++) {
+        const knob = document.createElement('div');
+        knob.className = 'macro-knob';
+        knob.dataset.index = i;
+
+        const visual = document.createElement('div');
+        visual.className = 'knob-visual';
+
+        const indicator = document.createElement('div');
+        indicator.className = 'knob-indicator';
+        visual.appendChild(indicator);
+
+        const label = document.createElement('div');
+        label.className = 'knob-label';
+        label.textContent = '---';
+
+        knob.appendChild(visual);
+        knob.appendChild(label);
+
+        // Touch/drag handling for knob
+        let startY = 0;
+        let startValue = 0;
+
+        const handleStart = (e) => {
+            e.preventDefault();
+            const touch = e.touches ? e.touches[0] : e;
+            startY = touch.clientY;
+            startValue = macroAssignments[i]?.value || 0.5;
+            knob.classList.add('active');
+        };
+
+        const handleMove = (e) => {
+            if (!knob.classList.contains('active')) return;
+            e.preventDefault();
+            const touch = e.touches ? e.touches[0] : e;
+            const deltaY = startY - touch.clientY;
+            const newValue = Math.max(0, Math.min(1, startValue + deltaY / 100));
+
+            if (macroAssignments[i]) {
+                macroAssignments[i].value = newValue;
+                synth.setMacroValue(i, newValue, macroAssignments[i]);
+                updateKnobVisual(knob, newValue);
+            }
+        };
+
+        const handleEnd = () => {
+            knob.classList.remove('active');
+        };
+
+        knob.addEventListener('touchstart', handleStart, { passive: false });
+        knob.addEventListener('touchmove', handleMove, { passive: false });
+        knob.addEventListener('touchend', handleEnd);
+        knob.addEventListener('mousedown', handleStart);
+        document.addEventListener('mousemove', handleMove);
+        document.addEventListener('mouseup', handleEnd);
+
+        macroGrid.appendChild(knob);
+    }
+}
+
+// Update knob visual rotation
+function updateKnobVisual(knob, value) {
+    const indicator = knob.querySelector('.knob-indicator');
+    // Map 0-1 to -135 to +135 degrees
+    const rotation = -135 + value * 270;
+    indicator.style.transform = `translateX(-50%) rotate(${rotation}deg)`;
+}
+
+// Update all macros based on current patch
+function updateMacros() {
+    macroAssignments = synth.getMacroAssignments();
+    const knobs = document.querySelectorAll('.macro-knob');
+
+    knobs.forEach((knob, i) => {
+        const label = knob.querySelector('.knob-label');
+        const assignment = macroAssignments[i];
+
+        if (assignment) {
+            label.textContent = assignment.label;
+            updateKnobVisual(knob, assignment.value);
+        } else {
+            label.textContent = '---';
+            updateKnobVisual(knob, 0.5);
+        }
+    });
+}
+
+// Create root and scale selectors
+function createScaleSelector() {
+    const rootSelector = document.getElementById('root-selector');
+    const scaleSelector = document.getElementById('scale-selector');
+
+    // Root notes
+    const roots = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+    rootSelector.innerHTML = '';
+
+    roots.forEach((note, i) => {
+        const btn = document.createElement('button');
+        btn.className = 'root-btn' + (i === selectedRoot ? ' active' : '');
+        btn.textContent = note;
+        btn.addEventListener('click', () => selectRoot(i));
+        btn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            selectRoot(i);
+        });
+        rootSelector.appendChild(btn);
+    });
+
+    // Scales from synth
+    const scales = Object.keys(synth.scales);
+    scaleSelector.innerHTML = '';
+
+    scales.forEach(scale => {
+        const btn = document.createElement('button');
+        btn.className = 'scale-btn' + (scale === selectedScale ? ' active' : '');
+        btn.textContent = scale;
+        btn.addEventListener('click', () => selectScale(scale));
+        btn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            selectScale(scale);
+        });
+        scaleSelector.appendChild(btn);
+    });
+}
+
+function selectRoot(index) {
+    selectedRoot = index;
+    const buttons = document.querySelectorAll('.root-btn');
+    buttons.forEach((btn, i) => {
+        btn.classList.toggle('active', i === index);
+    });
+    updateKeyboard();
+    // Update synth root note (C4 = 261.63 Hz as base)
+    synth.rootNote = 32.7 * Math.pow(2, selectedRoot / 12); // C1 base
+}
+
+function selectScale(scale) {
+    selectedScale = scale;
+    synth.currentScale = scale;
+    const buttons = document.querySelectorAll('.scale-btn');
+    buttons.forEach(btn => {
+        btn.classList.toggle('active', btn.textContent === scale);
+    });
+    updateKeyboard();
+}
+
+// Create 32-note keyboard (4 rows x 8 columns)
+function createKeyboard() {
+    const keyboard = document.getElementById('keyboard');
+    keyboard.innerHTML = '';
+
+    for (let i = 0; i < 32; i++) {
+        const key = document.createElement('div');
+        key.className = 'key';
+        key.dataset.index = i;
+
+        const noteSpan = document.createElement('span');
+        noteSpan.className = 'key-note';
+
+        const octaveSpan = document.createElement('span');
+        octaveSpan.className = 'key-octave';
+
+        key.appendChild(noteSpan);
+        key.appendChild(octaveSpan);
+
+        // Touch handlers
+        key.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            handleKeyPress(i, key);
+        }, { passive: false });
+
+        key.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            handleKeyRelease(i, key);
+        });
+
+        key.addEventListener('mousedown', () => handleKeyPress(i, key));
+        key.addEventListener('mouseup', () => handleKeyRelease(i, key));
+        key.addEventListener('mouseleave', () => handleKeyRelease(i, key));
+
+        keyboard.appendChild(key);
+    }
+
+    updateKeyboard();
+}
+
+// Update keyboard note labels
+function updateKeyboard() {
+    const keys = document.querySelectorAll('.key');
+    const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+    const scale = synth.scales[selectedScale] || synth.scales.harmonic;
+
+    keys.forEach((key, i) => {
+        const noteSpan = key.querySelector('.key-note');
+        const octaveSpan = key.querySelector('.key-octave');
+
+        // Map key index to scale degree and octave
+        const scaleIndex = i % scale.length;
+        const octaveOffset = Math.floor(i / scale.length);
+
+        // Get ratio from scale
+        const ratio = scale[scaleIndex];
+
+        // Calculate note name based on ratio (approximate to chromatic)
+        const cents = 1200 * Math.log2(ratio);
+        const semitones = Math.round(cents / 100);
+        const noteIndex = (selectedRoot + semitones) % 12;
+
+        noteSpan.textContent = noteNames[noteIndex];
+        octaveSpan.textContent = 2 + octaveOffset;
+    });
+}
+
+// Handle key press
+function handleKeyPress(index, keyElement) {
+    keyElement.classList.add('pressed');
+
+    const scale = synth.scales[selectedScale] || synth.scales.harmonic;
+    const scaleIndex = index % scale.length;
+    const octaveOffset = Math.floor(index / scale.length);
+
+    // Calculate frequency
+    const baseFreq = 65.41 * Math.pow(2, selectedRoot / 12); // C2 base
+    const ratio = scale[scaleIndex];
+    const freq = baseFreq * ratio * Math.pow(2, octaveOffset);
+
+    synth.playNote(freq, 0.8);
+    activeNotes.set(index, freq);
+}
+
+// Handle key release
+function handleKeyRelease(index, keyElement) {
+    keyElement.classList.remove('pressed');
+
+    const freq = activeNotes.get(index);
+    if (freq) {
+        synth.releaseNote(freq);
+        activeNotes.delete(index);
+    }
+}
+
+// Release all held notes
+function releaseAllNotes() {
+    activeNotes.forEach((freq, index) => {
+        synth.releaseNote(freq);
+        const key = document.querySelector(`.key[data-index="${index}"]`);
+        if (key) key.classList.remove('pressed');
+    });
+    activeNotes.clear();
+}
 
 // Initialize when DOM is ready
 if (document.readyState === 'loading') {
