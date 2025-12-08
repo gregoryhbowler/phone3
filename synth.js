@@ -535,6 +535,12 @@ class PatchUnknown {
         if (module.params && module.params.gain) {
             module.params.gain.setTargetAtTime(0, this.ctx.currentTime, 0.3);
         }
+        // Also fade partial gains for drone voices
+        if (module.partialGains) {
+            module.partialGains.forEach(g => {
+                try { g.gain.setTargetAtTime(0, this.ctx.currentTime, 0.3); } catch (e) {}
+            });
+        }
 
         // Schedule actual disconnection
         setTimeout(() => {
@@ -546,6 +552,11 @@ class PatchUnknown {
                 if (module.source) module.source.stop();
                 if (module.lfo) module.lfo.stop();
                 if (module.modulator) module.modulator.stop();
+                // Handle partials for drone voices
+                if (module.partials) module.partials.forEach(p => { try { p.stop(); } catch (e) {} });
+                if (module.partialGains) module.partialGains.forEach(g => { try { g.disconnect(); } catch (e) {} });
+                // Handle filters
+                if (module.filter) { try { module.filter.disconnect(); } catch (e) {} }
             } catch (e) {}
         }, 500);
 
@@ -841,14 +852,34 @@ class PatchUnknown {
     }
 
     // Total randomization (lower right cell)
+    // 70% pure chaos, 10% melodic-biased, 10% evolve-biased, 10% rhythmic-biased
     randomize() {
-        // Clear everything gracefully
+        const roll = Math.random();
+
+        // Clear everything gracefully first
         this.cells.forEach((_, i) => {
             if (this.cells[i]) {
                 this.deactivateCell(i);
             }
         });
 
+        if (roll < 0.70) {
+            // 70% - Pure chaos randomization
+            this.randomizeChaos();
+        } else if (roll < 0.80) {
+            // 10% - Melodic-biased (upper left)
+            this.randomizeMelodic();
+        } else if (roll < 0.90) {
+            // 10% - Evolve-biased (upper right)
+            this.randomizeConsonant();
+        } else {
+            // 10% - Rhythmic-biased (lower left)
+            this.randomizeRhythmic();
+        }
+    }
+
+    // Pure chaos randomization (original behavior)
+    randomizeChaos() {
         // Pick new scale
         const scaleNames = Object.keys(this.scales);
         this.currentScale = scaleNames[Math.floor(Math.random() * scaleNames.length)];
@@ -863,8 +894,343 @@ class PatchUnknown {
 
         // Activate random cells (sparse to start - let Krell build up)
         const numCells = 3 + Math.floor(Math.random() * 5);
+        this.activateRandomCells(numCells);
+    }
+
+    // Melodic-biased randomization (Barbieri, Glass, Reich, Pärt)
+    // Creates patches that are deeply melodic/arpeggiating from birth
+    randomizeMelodic() {
+        // Melodic scales only - weighted toward most tintinnabuli-friendly
+        const melodicScales = ['harmonic', 'harmonic', 'dreamHouse', 'pentatonic', 'fifths'];
+        this.currentScale = melodicScales[Math.floor(Math.random() * melodicScales.length)];
+
+        // Root in melodic register (65-165 Hz - C2 to E3 range, good for arpeggios)
+        this.rootNote = 65 * Math.pow(2, Math.random() * 1.35);
+
+        // Very slow, deliberate Krell - let melodies breathe (Pärt-like stillness)
+        this.krellEventRate = 10000 + Math.random() * 10000; // 10-20 seconds between events
+        this.krellDensity = 0.08 + Math.random() * 0.12; // Very sparse
+        this.driftAmount = 0.00002 + Math.random() * 0.00005; // Minimal drift - stable pitches
+
+        // Activate cells with melodic bias
+        const numCells = 3 + Math.floor(Math.random() * 3);
+        this.activateMelodicCells(numCells);
+    }
+
+    // Helper to activate cells with melodic characteristics
+    activateMelodicCells(numCells) {
         const cellIndices = Array.from({ length: 64 }, (_, i) => i)
-            .filter(i => i !== 7 && i !== 63) // Skip special cells
+            .filter(i => i !== 0 && i !== 7 && i !== 56 && i !== 63)
+            .sort(() => Math.random() - 0.5)
+            .slice(0, numCells);
+
+        cellIndices.forEach((index, i) => {
+            setTimeout(() => {
+                if (!this.isRunning) return;
+
+                // Create melodic oscillators directly rather than random modules
+                const triadRatios = [1, 5/4, 4/3, 3/2, 5/3, 2, 5/2, 3]; // Extended major with 6th
+                const ratio = triadRatios[Math.floor(Math.random() * triadRatios.length)];
+                const octave = Math.pow(2, Math.floor(Math.random() * 3));
+                const freq = this.rootNote * ratio * octave;
+
+                const osc = this.ctx.createOscillator();
+                // Melodic waveforms - sine and triangle for purity
+                osc.type = Math.random() < 0.7 ? 'sine' : 'triangle';
+                osc.frequency.value = freq;
+
+                const gain = this.ctx.createGain();
+                gain.gain.value = 0.08 + Math.random() * 0.08; // Soft, equal voices
+
+                // Slow amplitude envelope for tintinnabuli breathing
+                const lfo = this.ctx.createOscillator();
+                lfo.type = 'sine';
+                lfo.frequency.value = 0.05 + Math.random() * 0.15; // Very slow: 0.05-0.2 Hz
+                const lfoGain = this.ctx.createGain();
+                lfoGain.gain.value = gain.gain.value * 0.3; // Gentle amplitude modulation
+
+                lfo.connect(lfoGain);
+                lfoGain.connect(gain.gain);
+                osc.connect(gain);
+                gain.connect(this.masterGain);
+
+                osc.start();
+                lfo.start();
+
+                this.cells[index] = {
+                    node: gain,
+                    osc,
+                    lfo,
+                    category: 'osc',
+                    typeName: 'melodicVoice',
+                    params: { freq: osc.frequency, gain: gain.gain, lfoFreq: lfo.frequency }
+                };
+
+                // Reich-style: slight detuning between voices for phasing
+                if (i > 0 && Math.random() < 0.6) {
+                    const detune = (Math.random() - 0.5) * 1.5; // Very subtle: -0.75 to +0.75 cents
+                    osc.detune.value = detune;
+                }
+            }, i * 300); // Slower staggered entry
+        });
+    }
+
+    // Consonant/evolve-biased randomization (Radigue, Young, deep drones)
+    // Creates patches that are deeply meditative/consonant from birth
+    randomizeConsonant() {
+        // Drone-friendly scales - pure intervals
+        const consonantScales = ['dreamHouse', 'dreamHouse', 'drone', 'fifths'];
+        this.currentScale = consonantScales[Math.floor(Math.random() * consonantScales.length)];
+
+        // Very deep root for drones (27.5-45 Hz - A0 to F#1)
+        this.rootNote = 27.5 * Math.pow(2, Math.random() * 0.7);
+
+        // Extremely slow Krell - glacial Radigue-style evolution
+        this.krellEventRate = 20000 + Math.random() * 20000; // 20-40 seconds between events
+        this.krellDensity = 0.05 + Math.random() * 0.08; // Extremely sparse
+        this.driftAmount = 0.00008 + Math.random() * 0.00015; // Slow drift for beating
+
+        // Activate cells with drone characteristics
+        const numCells = 2 + Math.floor(Math.random() * 2);
+        this.activateDroneCells(numCells);
+    }
+
+    // Helper to activate cells with drone characteristics
+    activateDroneCells(numCells) {
+        const cellIndices = Array.from({ length: 64 }, (_, i) => i)
+            .filter(i => i !== 0 && i !== 7 && i !== 56 && i !== 63)
+            .sort(() => Math.random() - 0.5)
+            .slice(0, numCells);
+
+        cellIndices.forEach((index, i) => {
+            setTimeout(() => {
+                if (!this.isRunning) return;
+
+                // Pure interval ratios for drone work (La Monte Young style)
+                const droneRatios = [1, 3/2, 2, 3, 4, 9/8, 4/3]; // Perfect intervals + 9:8
+                const ratio = droneRatios[Math.floor(Math.random() * droneRatios.length)];
+                const freq = this.rootNote * ratio;
+
+                // Create rich harmonic drone with multiple partials
+                const fundamental = this.ctx.createOscillator();
+                fundamental.type = 'sine';
+                fundamental.frequency.value = freq;
+
+                const partial2 = this.ctx.createOscillator();
+                partial2.type = 'sine';
+                partial2.frequency.value = freq * 2;
+                // Slight detuning for slow beating (Radigue-style)
+                partial2.detune.value = (Math.random() - 0.5) * 4;
+
+                const partial3 = this.ctx.createOscillator();
+                partial3.type = 'sine';
+                partial3.frequency.value = freq * 3;
+                partial3.detune.value = (Math.random() - 0.5) * 6;
+
+                const gain = this.ctx.createGain();
+                gain.gain.value = 0.12 + Math.random() * 0.06;
+
+                const gain2 = this.ctx.createGain();
+                gain2.gain.value = gain.gain.value * 0.4;
+
+                const gain3 = this.ctx.createGain();
+                gain3.gain.value = gain.gain.value * 0.2;
+
+                // Glacial amplitude drift
+                const driftLfo = this.ctx.createOscillator();
+                driftLfo.type = 'sine';
+                driftLfo.frequency.value = 0.01 + Math.random() * 0.03; // 0.01-0.04 Hz = 25-100 second cycles
+                const driftGain = this.ctx.createGain();
+                driftGain.gain.value = gain.gain.value * 0.2;
+
+                driftLfo.connect(driftGain);
+                driftGain.connect(gain.gain);
+
+                fundamental.connect(gain);
+                partial2.connect(gain2);
+                partial3.connect(gain3);
+                gain.connect(this.masterGain);
+                gain2.connect(this.masterGain);
+                gain3.connect(this.masterGain);
+
+                fundamental.start();
+                partial2.start();
+                partial3.start();
+                driftLfo.start();
+
+                this.cells[index] = {
+                    node: gain,
+                    osc: fundamental,
+                    partials: [partial2, partial3],
+                    partialGains: [gain2, gain3],
+                    lfo: driftLfo,
+                    category: 'osc',
+                    typeName: 'droneVoice',
+                    params: { freq: fundamental.frequency, gain: gain.gain }
+                };
+            }, i * 500); // Very slow staggered entry
+        });
+    }
+
+    // Rhythmic-biased randomization (Holden, motorik, polyrhythm)
+    // Creates patches with strong pulse and groove from birth
+    randomizeRhythmic() {
+        // Scales that work well with rhythm - percussive friendly
+        const rhythmicScales = ['pentatonic', 'pentatonic', 'harmonic', 'partch'];
+        this.currentScale = rhythmicScales[Math.floor(Math.random() * rhythmicScales.length)];
+
+        // Mid-range root for punchy bass (40-80 Hz)
+        this.rootNote = 40 * Math.pow(2, Math.random());
+
+        // Fast, dense Krell - lots of rhythmic activity
+        this.krellEventRate = 1500 + Math.random() * 2500; // 1.5-4 seconds between events
+        this.krellDensity = 0.45 + Math.random() * 0.2; // Dense
+        this.driftAmount = 0.0002 + Math.random() * 0.0003; // Some drift for groove variation
+
+        // Activate cells with rhythmic characteristics
+        const numCells = 4 + Math.floor(Math.random() * 3);
+        this.activateRhythmicCells(numCells);
+    }
+
+    // Helper to activate cells with rhythmic characteristics
+    activateRhythmicCells(numCells) {
+        const cellIndices = Array.from({ length: 64 }, (_, i) => i)
+            .filter(i => i !== 0 && i !== 7 && i !== 56 && i !== 63)
+            .sort(() => Math.random() - 0.5)
+            .slice(0, numCells);
+
+        // Always create a master clock first
+        const clockIndex = cellIndices[0];
+        setTimeout(() => {
+            if (!this.isRunning) return;
+
+            // Master clock - quantized to musical rates
+            const clockRates = [1, 1.5, 2, 3, 4]; // Hz - 60, 90, 120, 180, 240 BPM equivalent
+            const clockRate = clockRates[Math.floor(Math.random() * clockRates.length)];
+
+            const clock = this.ctx.createOscillator();
+            clock.type = 'square';
+            clock.frequency.value = clockRate;
+
+            const clockGain = this.ctx.createGain();
+            clockGain.gain.value = 30; // Strong modulation signal
+
+            clock.connect(clockGain);
+            clock.start();
+
+            this.cells[clockIndex] = {
+                node: clockGain,
+                osc: clock,
+                category: 'seq',
+                isClock: true,
+                isModulator: true,
+                typeName: 'masterClock',
+                params: { freq: clock.frequency, depth: clockGain.gain }
+            };
+        }, 100);
+
+        // Create rhythmic oscillators with amplitude modulation synced to clock
+        cellIndices.slice(1).forEach((index, i) => {
+            setTimeout(() => {
+                if (!this.isRunning) return;
+
+                const isPercussive = Math.random() < 0.4;
+
+                if (isPercussive) {
+                    // Percussive click/blip voice
+                    const osc = this.ctx.createOscillator();
+                    osc.type = 'square';
+                    const freq = this.rootNote * Math.pow(2, Math.floor(Math.random() * 4));
+                    osc.frequency.value = freq;
+
+                    // Rhythmic amplitude gate
+                    const ampLfo = this.ctx.createOscillator();
+                    ampLfo.type = 'square';
+                    // Polyrhythmic: subdivisions or multiples of implied tempo
+                    const rhythmMultipliers = [0.5, 1, 1.5, 2, 3, 4];
+                    const baseRate = 2; // ~120 BPM
+                    ampLfo.frequency.value = baseRate * rhythmMultipliers[Math.floor(Math.random() * rhythmMultipliers.length)];
+
+                    const ampDepth = this.ctx.createGain();
+                    ampDepth.gain.value = 0.15;
+
+                    const gain = this.ctx.createGain();
+                    gain.gain.value = 0.1;
+
+                    // Bandpass for more percussive tone
+                    const filter = this.ctx.createBiquadFilter();
+                    filter.type = 'bandpass';
+                    filter.frequency.value = freq * 2;
+                    filter.Q.value = 5;
+
+                    ampLfo.connect(ampDepth);
+                    ampDepth.connect(gain.gain);
+                    osc.connect(filter);
+                    filter.connect(gain);
+                    gain.connect(this.masterGain);
+
+                    osc.start();
+                    ampLfo.start();
+
+                    this.cells[index] = {
+                        node: gain,
+                        osc,
+                        lfo: ampLfo,
+                        filter,
+                        category: 'osc',
+                        typeName: 'percussiveVoice',
+                        params: { freq: osc.frequency, gain: gain.gain, lfoFreq: ampLfo.frequency }
+                    };
+                } else {
+                    // Pulsing bass/tone voice
+                    const osc = this.ctx.createOscillator();
+                    osc.type = Math.random() < 0.5 ? 'sawtooth' : 'square';
+                    osc.frequency.value = this.rootNote * (Math.random() < 0.5 ? 1 : 2);
+
+                    // Rhythmic filter sweep
+                    const filter = this.ctx.createBiquadFilter();
+                    filter.type = 'lowpass';
+                    filter.frequency.value = 400 + Math.random() * 800;
+                    filter.Q.value = 4 + Math.random() * 8;
+
+                    const filterLfo = this.ctx.createOscillator();
+                    filterLfo.type = 'sine';
+                    const rhythmRates = [0.5, 1, 2, 4];
+                    filterLfo.frequency.value = rhythmRates[Math.floor(Math.random() * rhythmRates.length)];
+
+                    const filterDepth = this.ctx.createGain();
+                    filterDepth.gain.value = 300 + Math.random() * 500;
+
+                    const gain = this.ctx.createGain();
+                    gain.gain.value = 0.12 + Math.random() * 0.06;
+
+                    filterLfo.connect(filterDepth);
+                    filterDepth.connect(filter.frequency);
+                    osc.connect(filter);
+                    filter.connect(gain);
+                    gain.connect(this.masterGain);
+
+                    osc.start();
+                    filterLfo.start();
+
+                    this.cells[index] = {
+                        node: gain,
+                        osc,
+                        filter,
+                        lfo: filterLfo,
+                        category: 'osc',
+                        typeName: 'pulsingVoice',
+                        params: { freq: osc.frequency, gain: gain.gain, filterFreq: filter.frequency, lfoFreq: filterLfo.frequency }
+                    };
+                }
+            }, i * 150 + 200); // Quick staggered entry for energy
+        });
+    }
+
+    // Helper to activate random cells
+    activateRandomCells(numCells) {
+        const cellIndices = Array.from({ length: 64 }, (_, i) => i)
+            .filter(i => i !== 0 && i !== 7 && i !== 56 && i !== 63) // Skip corner cells
             .sort(() => Math.random() - 0.5)
             .slice(0, numCells);
 
@@ -881,8 +1247,10 @@ class PatchUnknown {
         setTimeout(() => {
             const hasOsc = this.cells.some(c => c && c.category === 'osc');
             if (!hasOsc) {
-                const emptyIndex = this.cells.findIndex(c => c === null);
-                if (emptyIndex !== -1 && emptyIndex !== 7 && emptyIndex !== 63) {
+                const emptyIndex = this.cells.findIndex((c, idx) =>
+                    c === null && idx !== 0 && idx !== 7 && idx !== 56 && idx !== 63
+                );
+                if (emptyIndex !== -1) {
                     const osc = this.ctx.createOscillator();
                     osc.type = 'sine';
                     osc.frequency.value = this.getMusicalFrequency();
