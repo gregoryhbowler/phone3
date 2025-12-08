@@ -56,7 +56,27 @@ class PatchUnknown {
             // Spectral (overtone singing, Radigue)
             spectral: [1/1, 2/1, 3/1, 4/1, 5/1, 6/1, 7/1, 8/1].map(r => r / Math.pow(2, Math.floor(Math.log2(r) || 0))),
             // Pentatonic JI
-            pentatonic: [1/1, 9/8, 5/4, 3/2, 5/3]
+            pentatonic: [1/1, 9/8, 5/4, 3/2, 5/3],
+
+            // ============== TRADITIONAL WESTERN SCALES (12-TET) ==============
+            // Using equal temperament ratios: 2^(n/12)
+            major: [1, 1.122462, 1.259921, 1.334840, 1.498307, 1.681793, 1.887749], // W-W-H-W-W-W-H
+            minor: [1, 1.122462, 1.189207, 1.334840, 1.498307, 1.587401, 1.781797], // natural minor
+            dorian: [1, 1.122462, 1.189207, 1.334840, 1.498307, 1.681793, 1.781797],
+            phrygian: [1, 1.059463, 1.189207, 1.334840, 1.498307, 1.587401, 1.781797],
+            lydian: [1, 1.122462, 1.259921, 1.414214, 1.498307, 1.681793, 1.887749],
+            mixolydian: [1, 1.122462, 1.259921, 1.334840, 1.498307, 1.681793, 1.781797],
+            locrian: [1, 1.059463, 1.189207, 1.334840, 1.414214, 1.587401, 1.781797],
+            // Harmonic minor (raised 7th)
+            harmonicMinor: [1, 1.122462, 1.189207, 1.334840, 1.498307, 1.587401, 1.887749],
+            // Melodic minor (raised 6th and 7th)
+            melodicMinor: [1, 1.122462, 1.189207, 1.334840, 1.498307, 1.681793, 1.887749],
+            // Blues scale
+            blues: [1, 1.189207, 1.334840, 1.414214, 1.498307, 1.781797],
+            // Whole tone
+            wholeTone: [1, 1.122462, 1.259921, 1.414214, 1.587401, 1.781797],
+            // Chromatic (all 12 notes)
+            chromatic: [1, 1.059463, 1.122462, 1.189207, 1.259921, 1.334840, 1.414214, 1.498307, 1.587401, 1.681793, 1.781797, 1.887749]
         };
 
         this.currentScale = 'dreamHouse';
@@ -1362,71 +1382,166 @@ class PatchUnknown {
         }
     }
 
-    // ============== NOTE PLAYING ==============
+    // ============== V/OCT PITCH CONTROL ==============
+    // Instead of creating new oscillators, this controls the patch's existing oscillators
+    // like a keyboard CV input on a modular synth
 
-    playNote(frequency, velocity = 0.8) {
-        // Check if note is already playing
-        if (this.playingNotes && this.playingNotes.has(frequency)) {
-            return;
-        }
-
-        if (!this.playingNotes) this.playingNotes = new Map();
-
-        // Create a simple but musical voice
-        const osc = this.ctx.createOscillator();
-        const osc2 = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        const filter = this.ctx.createBiquadFilter();
-
-        // Main oscillator
-        osc.type = 'sawtooth';
-        osc.frequency.value = frequency;
-
-        // Detuned second oscillator for richness
-        osc2.type = 'triangle';
-        osc2.frequency.value = frequency * 1.002; // Slight detune
-        osc2.detune.value = 7; // Slight additional detune
-
-        // Filter for warmth
-        filter.type = 'lowpass';
-        filter.frequency.value = Math.min(frequency * 4, 8000);
-        filter.Q.value = 1;
-
-        // Envelope
-        gain.gain.value = 0;
-        gain.gain.setTargetAtTime(velocity * 0.15, this.ctx.currentTime, 0.01);
-
-        // Connections
-        osc.connect(filter);
-        osc2.connect(filter);
-        filter.connect(gain);
-        gain.connect(this.masterGain);
-
-        osc.start();
-        osc2.start();
-
-        this.playingNotes.set(frequency, { osc, osc2, gain, filter });
+    // Store the base frequencies of all oscillators when entering play mode
+    storeBaseFrequencies() {
+        this.baseFrequencies = new Map();
+        this.cells.forEach((cell, index) => {
+            if (cell && cell.category === 'osc' && cell.params && cell.params.freq) {
+                // Store the original frequency
+                this.baseFrequencies.set(index, cell.params.freq.value);
+            }
+        });
     }
 
-    releaseNote(frequency) {
-        if (!this.playingNotes || !this.playingNotes.has(frequency)) return;
+    // Set pitch CV - tunes ALL oscillators relative to their base pitch
+    // ratio: the frequency multiplier (e.g., 2 = octave up, 0.5 = octave down)
+    setPitchCV(ratio, glideTime = 0.05) {
+        if (!this.baseFrequencies) {
+            this.storeBaseFrequencies();
+        }
 
-        const note = this.playingNotes.get(frequency);
+        this.currentPitchRatio = ratio;
 
-        // Release envelope
-        note.gain.gain.cancelScheduledValues(this.ctx.currentTime);
-        note.gain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.15);
+        this.cells.forEach((cell, index) => {
+            if (!cell || cell.category !== 'osc' || !cell.params || !cell.params.freq) return;
 
-        // Stop after release
-        setTimeout(() => {
-            try {
-                note.osc.stop();
-                note.osc2.stop();
-                note.gain.disconnect();
-            } catch (e) {}
-        }, 500);
+            const baseFreq = this.baseFrequencies.get(index);
+            if (baseFreq === undefined) return;
 
-        this.playingNotes.delete(frequency);
+            // Calculate new frequency maintaining harmonic relationships
+            const newFreq = baseFreq * ratio;
+
+            // Clamp to reasonable range
+            const clampedFreq = Math.max(20, Math.min(newFreq, 8000));
+
+            // Smooth glide to new pitch
+            cell.params.freq.setTargetAtTime(clampedFreq, this.ctx.currentTime, glideTime);
+
+            // Also tune any partials (for drone voices)
+            if (cell.partials) {
+                cell.partials.forEach((partial, i) => {
+                    const partialRatio = (i + 2); // 2nd, 3rd partial etc
+                    partial.frequency.setTargetAtTime(
+                        clampedFreq * partialRatio,
+                        this.ctx.currentTime,
+                        glideTime
+                    );
+                });
+            }
+        });
+    }
+
+    // Convert keyboard note to pitch ratio
+    // keyIndex: 0-31 (32 keys)
+    // scale: array of ratios
+    // root: semitones from A (0-11)
+    getKeyPitchRatio(keyIndex, scale, rootSemitones = 0) {
+        const scaleLength = scale.length;
+        const scaleIndex = keyIndex % scaleLength;
+        const octaveOffset = Math.floor(keyIndex / scaleLength);
+
+        // Root note offset (semitones to ratio)
+        const rootRatio = Math.pow(2, rootSemitones / 12);
+
+        // Scale degree ratio
+        const scaleRatio = scale[scaleIndex];
+
+        // Octave multiplier
+        const octaveRatio = Math.pow(2, octaveOffset);
+
+        return rootRatio * scaleRatio * octaveRatio;
+    }
+
+    // Play a key - sends pitch CV to all oscillators
+    playKey(keyIndex, scale, rootSemitones = 0, glideTime = 0.05) {
+        const ratio = this.getKeyPitchRatio(keyIndex, scale, rootSemitones);
+        this.setPitchCV(ratio, glideTime);
+
+        // Slight gain boost on key press for articulation
+        this.cells.forEach(cell => {
+            if (cell && cell.params && cell.params.gain) {
+                const currentGain = cell.params.gain.value;
+                // Quick attack
+                cell.params.gain.setTargetAtTime(currentGain * 1.15, this.ctx.currentTime, 0.01);
+                // Return to normal
+                cell.params.gain.setTargetAtTime(currentGain, this.ctx.currentTime + 0.05, 0.1);
+            }
+        });
+    }
+
+    // Release key - optionally return to base pitch or hold
+    releaseKey(holdPitch = true) {
+        if (!holdPitch && this.baseFrequencies) {
+            // Return all oscillators to their base frequencies
+            this.setPitchCV(1, 0.2);
+        }
+        // If holdPitch is true, the pitch stays where it is until next key press
+    }
+
+    // Quantize all oscillators to current scale/root (for when scale changes)
+    quantizeOscillators(scale, rootSemitones = 0) {
+        if (!this.baseFrequencies) {
+            this.storeBaseFrequencies();
+        }
+
+        const rootFreq = 55 * Math.pow(2, rootSemitones / 12); // A1 as base
+
+        this.cells.forEach((cell, index) => {
+            if (!cell || cell.category !== 'osc' || !cell.params || !cell.params.freq) return;
+
+            const currentFreq = cell.params.freq.value;
+
+            // Find nearest scale degree
+            let nearestRatio = 1;
+            let minDistance = Infinity;
+
+            // Check multiple octaves
+            for (let octave = -2; octave <= 4; octave++) {
+                const octaveMultiplier = Math.pow(2, octave);
+                for (const scaleRatio of scale) {
+                    const targetFreq = rootFreq * scaleRatio * octaveMultiplier;
+                    const distance = Math.abs(Math.log2(currentFreq / targetFreq));
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        nearestRatio = scaleRatio * octaveMultiplier;
+                    }
+                }
+            }
+
+            // Snap to nearest scale degree
+            const quantizedFreq = rootFreq * nearestRatio;
+            cell.params.freq.setTargetAtTime(quantizedFreq, this.ctx.currentTime, 0.3);
+
+            // Update base frequency for V/Oct tracking
+            this.baseFrequencies.set(index, quantizedFreq);
+        });
+    }
+
+    // Set root note and optionally quantize
+    setRoot(rootSemitones, scale = null, quantize = true) {
+        this.currentRoot = rootSemitones;
+        this.rootNote = 55 * Math.pow(2, rootSemitones / 12);
+
+        if (quantize && scale) {
+            this.quantizeOscillators(scale, rootSemitones);
+        }
+    }
+
+    // Set scale and optionally quantize
+    setScale(scaleName, rootSemitones = null, quantize = true) {
+        if (this.scales[scaleName]) {
+            this.currentScale = scaleName;
+            const scale = this.scales[scaleName];
+            const root = rootSemitones !== null ? rootSemitones : (this.currentRoot || 0);
+
+            if (quantize) {
+                this.quantizeOscillators(scale, root);
+            }
+        }
     }
 
     // ============== MACRO SYSTEM ==============

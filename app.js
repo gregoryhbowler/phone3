@@ -74,6 +74,16 @@ function toggleMode() {
         modeToggle.classList.add('play-mode');
         patchMode.classList.add('hidden');
         playMode.classList.remove('hidden');
+
+        // Store base frequencies for V/Oct control
+        synth.storeBaseFrequencies();
+
+        // Quantize oscillators to current scale/root
+        const scale = synth.scales[selectedScale];
+        if (scale) {
+            synth.quantizeOscillators(scale, selectedRoot);
+        }
+
         updateMacros();
     } else {
         currentMode = 'patch';
@@ -81,8 +91,9 @@ function toggleMode() {
         modeToggle.classList.remove('play-mode');
         patchMode.classList.remove('hidden');
         playMode.classList.add('hidden');
-        // Release any held notes
-        releaseAllNotes();
+        // Release pitch CV (return to base)
+        synth.releaseKey(false);
+        activeNotes.clear();
     }
 }
 
@@ -481,18 +492,25 @@ function selectRoot(index) {
         btn.classList.toggle('active', i === index);
     });
     updateKeyboard();
-    // Update synth root note (C4 = 261.63 Hz as base)
-    synth.rootNote = 32.7 * Math.pow(2, selectedRoot / 12); // C1 base
+
+    // V/Oct: quantize all oscillators to new root
+    const scale = synth.scales[selectedScale];
+    if (scale) {
+        synth.setRoot(selectedRoot, scale, true);
+    }
 }
 
-function selectScale(scale) {
-    selectedScale = scale;
-    synth.currentScale = scale;
+function selectScale(scaleName) {
+    selectedScale = scaleName;
+    synth.currentScale = scaleName;
     const buttons = document.querySelectorAll('.scale-btn');
     buttons.forEach(btn => {
-        btn.classList.toggle('active', btn.textContent === scale);
+        btn.classList.toggle('active', btn.textContent === scaleName);
     });
     updateKeyboard();
+
+    // V/Oct: quantize all oscillators to new scale
+    synth.setScale(scaleName, selectedRoot, true);
 }
 
 // Create 32-note keyboard (4 rows x 8 columns)
@@ -562,42 +580,40 @@ function updateKeyboard() {
     });
 }
 
-// Handle key press
+// Handle key press - V/Oct pitch control of patch oscillators
 function handleKeyPress(index, keyElement) {
     keyElement.classList.add('pressed');
 
     const scale = synth.scales[selectedScale] || synth.scales.harmonic;
-    const scaleIndex = index % scale.length;
-    const octaveOffset = Math.floor(index / scale.length);
 
-    // Calculate frequency
-    const baseFreq = 65.41 * Math.pow(2, selectedRoot / 12); // C2 base
-    const ratio = scale[scaleIndex];
-    const freq = baseFreq * ratio * Math.pow(2, octaveOffset);
+    // V/Oct: tune all oscillators to this key's pitch
+    synth.playKey(index, scale, selectedRoot, 0.03);
 
-    synth.playNote(freq, 0.8);
-    activeNotes.set(index, freq);
+    // Track which key is pressed (for visual state)
+    activeNotes.set(index, true);
 }
 
-// Handle key release
+// Handle key release - pitch holds until next key
 function handleKeyRelease(index, keyElement) {
     keyElement.classList.remove('pressed');
 
-    const freq = activeNotes.get(index);
-    if (freq) {
-        synth.releaseNote(freq);
+    if (activeNotes.has(index)) {
+        // V/Oct style: pitch holds, no release
+        // (like a sample-and-hold on pitch CV)
+        synth.releaseKey(true); // true = hold pitch
         activeNotes.delete(index);
     }
 }
 
-// Release all held notes
+// Release all held notes - return to base pitch
 function releaseAllNotes() {
-    activeNotes.forEach((freq, index) => {
-        synth.releaseNote(freq);
+    activeNotes.forEach((_, index) => {
         const key = document.querySelector(`.key[data-index="${index}"]`);
         if (key) key.classList.remove('pressed');
     });
     activeNotes.clear();
+    // Return oscillators to base pitch
+    synth.releaseKey(false);
 }
 
 // Initialize when DOM is ready
