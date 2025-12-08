@@ -91,6 +91,14 @@ class PatchUnknown {
         this.decayRate = 0.9997; // Very slow degradation
         this.loopMemory = new Map(); // Remember cell states
 
+        // Timbral variety settings
+        this.waveformTypes = ['sine', 'triangle', 'sawtooth', 'square', 'pulse'];
+        this.currentWaveformBias = 0.5; // 0 = sine-heavy, 1 = complex-heavy
+        this.globalFilterCutoff = 1.0; // 0-1, normalized
+        this.globalFilterResonance = 0.2; // 0-1
+        this.globalFMDepth = 0; // 0-1
+        this.globalDistortion = 0; // 0-1
+
         // Spectral analyzer for self-listening
         this.analyser = null;
         this.spectralData = null;
@@ -206,6 +214,230 @@ class PatchUnknown {
         shaper.curve = curve;
         shaper.oversample = '2x';
         return shaper;
+    }
+
+    // ============== TIMBRAL VARIETY TOOLS ==============
+
+    // Create a per-voice waveshaper for distortion
+    createVoiceDistortion(amount = 0.3) {
+        const shaper = this.ctx.createWaveShaper();
+        const curve = new Float32Array(65536);
+        const drive = 1 + amount * 10; // 1-11x drive
+
+        for (let i = 0; i < 65536; i++) {
+            const x = (i - 32768) / 32768;
+            // Soft clipping with variable drive
+            curve[i] = Math.tanh(x * drive) / Math.tanh(drive);
+        }
+        shaper.curve = curve;
+        shaper.oversample = '2x';
+        return shaper;
+    }
+
+    // Create a per-voice filter with modulation capability
+    createVoiceFilter(type = 'lowpass', cutoff = 2000, resonance = 1) {
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = type;
+        filter.frequency.value = cutoff;
+        filter.Q.value = resonance;
+        return filter;
+    }
+
+    // Create pulse wave with PWM (dual sawtooth technique)
+    createPulseOscillator(freq) {
+        // Pulse wave = saw1 - saw2 with phase offset
+        const saw1 = this.ctx.createOscillator();
+        saw1.type = 'sawtooth';
+        saw1.frequency.value = freq;
+
+        const saw2 = this.ctx.createOscillator();
+        saw2.type = 'sawtooth';
+        saw2.frequency.value = freq;
+
+        // Inverter for saw2
+        const inverter = this.ctx.createGain();
+        inverter.gain.value = -1;
+
+        // Delay for pulse width (phase shift)
+        // Using a constant source + gain to offset the second saw
+        const widthControl = this.ctx.createConstantSource();
+        widthControl.offset.value = 0;
+
+        // Mix node
+        const mixer = this.ctx.createGain();
+        mixer.gain.value = 0.5;
+
+        saw1.connect(mixer);
+        saw2.connect(inverter);
+        inverter.connect(mixer);
+
+        // PWM via detuning saw2 - creates phase drift = pulse width modulation
+        // For static width, we use delay. For PWM, we modulate this
+        const pwmLfo = this.ctx.createOscillator();
+        pwmLfo.type = 'sine';
+        pwmLfo.frequency.value = 0.5; // Slow PWM
+
+        const pwmDepth = this.ctx.createGain();
+        pwmDepth.gain.value = 10; // Cents of detune for PWM effect
+
+        pwmLfo.connect(pwmDepth);
+        pwmDepth.connect(saw2.detune);
+
+        saw1.start();
+        saw2.start();
+        pwmLfo.start();
+        widthControl.start();
+
+        return {
+            node: mixer,
+            osc: saw1,
+            osc2: saw2,
+            pwmLfo,
+            pwmDepth,
+            params: {
+                freq: saw1.frequency,
+                pwmRate: pwmLfo.frequency,
+                pwmDepth: pwmDepth.gain
+            },
+            setFrequency: (f) => {
+                saw1.frequency.value = f;
+                saw2.frequency.value = f;
+            }
+        };
+    }
+
+    // Create FM pair (carrier + modulator)
+    createFMOscillator(carrierFreq, modRatio = 2, modDepth = 100) {
+        const carrier = this.ctx.createOscillator();
+        carrier.type = 'sine';
+        carrier.frequency.value = carrierFreq;
+
+        const modulator = this.ctx.createOscillator();
+        modulator.type = 'sine';
+        modulator.frequency.value = carrierFreq * modRatio;
+
+        const modGain = this.ctx.createGain();
+        modGain.gain.value = modDepth; // Hz of frequency deviation
+
+        modulator.connect(modGain);
+        modGain.connect(carrier.frequency);
+
+        carrier.start();
+        modulator.start();
+
+        return {
+            node: carrier,
+            osc: carrier,
+            modulator,
+            modGain,
+            params: {
+                freq: carrier.frequency,
+                modRatio: { value: modRatio }, // Pseudo-param
+                modDepth: modGain.gain
+            },
+            setFrequency: (f) => {
+                carrier.frequency.value = f;
+                modulator.frequency.value = f * modRatio;
+            }
+        };
+    }
+
+    // Create a complete voice with optional filter, distortion, and FM
+    createRichVoice(freq, options = {}) {
+        const {
+            waveform = 'sine',
+            filterCutoff = 4000,
+            filterQ = 1,
+            filterType = 'lowpass',
+            distortion = 0,
+            fmDepth = 0,
+            fmRatio = 2,
+            pwmRate = 0.5,
+            pwmDepth = 10
+        } = options;
+
+        let oscNode, oscRef, modulator, osc2;
+
+        // Choose oscillator type
+        if (waveform === 'pulse') {
+            const pulse = this.createPulseOscillator(freq, 0.5);
+            oscNode = pulse.node;
+            oscRef = pulse.osc;
+            osc2 = pulse.osc2;
+            pulse.pwmLfo.frequency.value = pwmRate;
+            pulse.pwmDepth.gain.value = pwmDepth;
+        } else if (fmDepth > 0) {
+            const fm = this.createFMOscillator(freq, fmRatio, fmDepth);
+            oscNode = fm.node;
+            oscRef = fm.osc;
+            modulator = fm.modulator;
+        } else {
+            const osc = this.ctx.createOscillator();
+            osc.type = waveform;
+            osc.frequency.value = freq;
+            osc.start();
+            oscNode = osc;
+            oscRef = osc;
+        }
+
+        // Create signal chain: osc -> filter -> distortion -> gain
+        const filter = this.createVoiceFilter(filterType, filterCutoff, filterQ);
+        const distortionNode = distortion > 0 ? this.createVoiceDistortion(distortion) : null;
+        const gain = this.ctx.createGain();
+        gain.gain.value = 0.1;
+
+        // Wire up
+        if (distortionNode) {
+            oscNode.connect(filter);
+            filter.connect(distortionNode);
+            distortionNode.connect(gain);
+        } else {
+            oscNode.connect(filter);
+            filter.connect(gain);
+        }
+
+        return {
+            node: gain,
+            osc: oscRef,
+            osc2,
+            modulator,
+            filter,
+            distortion: distortionNode,
+            category: 'osc',
+            waveform,
+            params: {
+                freq: oscRef.frequency,
+                gain: gain.gain,
+                filterFreq: filter.frequency,
+                filterQ: filter.Q,
+                fmDepth: modulator ? { value: fmDepth } : null,
+                distAmount: { value: distortion }
+            }
+        };
+    }
+
+    // Get a random waveform based on bias
+    getRandomWaveform() {
+        const r = Math.random();
+        const bias = this.currentWaveformBias;
+
+        if (r < 0.15 + (1 - bias) * 0.35) return 'sine';
+        if (r < 0.30 + (1 - bias) * 0.20) return 'triangle';
+        if (r < 0.55 + bias * 0.15) return 'sawtooth';
+        if (r < 0.80 + bias * 0.10) return 'square';
+        return 'pulse';
+    }
+
+    // Update distortion curve for a voice
+    updateVoiceDistortion(shaper, amount) {
+        const curve = new Float32Array(65536);
+        const drive = 1 + amount * 10;
+
+        for (let i = 0; i < 65536; i++) {
+            const x = (i - 32768) / 32768;
+            curve[i] = Math.tanh(x * drive) / Math.tanh(drive);
+        }
+        shaper.curve = curve;
     }
 
     // Krell patch - autonomous self-playing (Todd Barton, Subotnick)
@@ -518,15 +750,33 @@ class PatchUnknown {
     }
 
     createFallbackModule() {
-        const osc = this.ctx.createOscillator();
-        // Favor pure waveforms (sine, triangle) for spectral clarity
-        osc.type = ['sine', 'triangle', 'sine', 'sine'][Math.floor(Math.random() * 4)];
-        osc.frequency.value = this.getMusicalFrequency();
-        const gain = this.ctx.createGain();
-        gain.gain.value = 0.1;
-        osc.connect(gain);
-        osc.start();
-        return { node: gain, osc, category: 'osc', params: { freq: osc.frequency, gain: gain.gain } };
+        const freq = this.getMusicalFrequency();
+        const waveform = this.getRandomWaveform();
+
+        // Determine timbral features based on global settings and randomness
+        const useFilter = Math.random() < 0.7; // 70% chance of filter
+        const useFM = waveform === 'sine' && Math.random() < this.globalFMDepth + 0.1;
+        const useDistortion = Math.random() < this.globalDistortion + 0.05;
+
+        const options = {
+            waveform: useFM ? 'sine' : waveform, // FM only on sine carriers
+            filterCutoff: 200 + Math.random() * 4000 * this.globalFilterCutoff,
+            filterQ: 0.5 + Math.random() * 8 * this.globalFilterResonance,
+            filterType: useFilter ? 'lowpass' : 'allpass',
+            distortion: useDistortion ? 0.1 + Math.random() * 0.4 : 0,
+            fmDepth: useFM ? 50 + Math.random() * 200 : 0,
+            fmRatio: [1, 2, 3, 4, 5, 7][Math.floor(Math.random() * 6)],
+            pwmRate: 0.1 + Math.random() * 2,
+            pwmDepth: 5 + Math.random() * 20
+        };
+
+        const voice = this.createRichVoice(freq, options);
+        voice.typeName = `voice_${waveform}`;
+
+        // Connect to master
+        voice.node.connect(this.masterGain);
+
+        return voice;
     }
 
     // Activate/deactivate a cell
@@ -580,11 +830,13 @@ class PatchUnknown {
                 if (module.source) module.source.stop();
                 if (module.lfo) module.lfo.stop();
                 if (module.modulator) module.modulator.stop();
+                if (module.pwmLfo) module.pwmLfo.stop();
                 // Handle partials for drone voices
                 if (module.partials) module.partials.forEach(p => { try { p.stop(); } catch (e) {} });
                 if (module.partialGains) module.partialGains.forEach(g => { try { g.disconnect(); } catch (e) {} });
-                // Handle filters
+                // Handle filters and distortion
                 if (module.filter) { try { module.filter.disconnect(); } catch (e) {} }
+                if (module.distortion) { try { module.distortion.disconnect(); } catch (e) {} }
             } catch (e) {}
         }, 500);
 
@@ -956,50 +1208,57 @@ class PatchUnknown {
             setTimeout(() => {
                 if (!this.isRunning) return;
 
-                // Create melodic oscillators directly rather than random modules
+                // Create melodic oscillators with timbral variety
                 const triadRatios = [1, 5/4, 4/3, 3/2, 5/3, 2, 5/2, 3]; // Extended major with 6th
                 const ratio = triadRatios[Math.floor(Math.random() * triadRatios.length)];
                 const octave = Math.pow(2, Math.floor(Math.random() * 3));
                 const freq = this.rootNote * ratio * octave;
 
-                const osc = this.ctx.createOscillator();
-                // Melodic waveforms - sine and triangle for purity
-                osc.type = Math.random() < 0.7 ? 'sine' : 'triangle';
-                osc.frequency.value = freq;
+                // Choose waveform with melodic bias (mostly pure, occasionally rich)
+                const waveforms = ['sine', 'sine', 'triangle', 'triangle', 'sawtooth', 'pulse'];
+                const waveform = waveforms[Math.floor(Math.random() * waveforms.length)];
 
-                const gain = this.ctx.createGain();
-                gain.gain.value = 0.08 + Math.random() * 0.08; // Soft, equal voices
+                // Create rich voice with filter for timbral shaping
+                const useFM = waveform === 'sine' && Math.random() < 0.2; // 20% FM on sine
+                const voice = this.createRichVoice(freq, {
+                    waveform: useFM ? 'sine' : waveform,
+                    filterCutoff: 800 + Math.random() * 3000, // Melodic = brighter
+                    filterQ: 0.5 + Math.random() * 2,
+                    filterType: 'lowpass',
+                    distortion: Math.random() < 0.1 ? 0.1 : 0, // Rare subtle distortion
+                    fmDepth: useFM ? 30 + Math.random() * 80 : 0,
+                    fmRatio: [1, 2, 3][Math.floor(Math.random() * 3)],
+                    pwmRate: 0.1 + Math.random() * 0.5,
+                    pwmDepth: 5 + Math.random() * 10
+                });
+
+                voice.node.gain.value = 0.08 + Math.random() * 0.08;
 
                 // Slow amplitude envelope for tintinnabuli breathing
                 const lfo = this.ctx.createOscillator();
                 lfo.type = 'sine';
-                lfo.frequency.value = 0.05 + Math.random() * 0.15; // Very slow: 0.05-0.2 Hz
+                lfo.frequency.value = 0.05 + Math.random() * 0.15;
                 const lfoGain = this.ctx.createGain();
-                lfoGain.gain.value = gain.gain.value * 0.3; // Gentle amplitude modulation
+                lfoGain.gain.value = voice.node.gain.value * 0.3;
 
                 lfo.connect(lfoGain);
-                lfoGain.connect(gain.gain);
-                osc.connect(gain);
-                gain.connect(this.masterGain);
+                lfoGain.connect(voice.node.gain);
+                voice.node.connect(this.masterGain);
 
-                osc.start();
                 lfo.start();
 
-                this.cells[index] = {
-                    node: gain,
-                    osc,
-                    lfo,
-                    category: 'osc',
-                    typeName: 'melodicVoice',
-                    params: { freq: osc.frequency, gain: gain.gain, lfoFreq: lfo.frequency }
-                };
+                voice.lfo = lfo;
+                voice.typeName = 'melodicVoice';
+                voice.params.lfoFreq = lfo.frequency;
+
+                this.cells[index] = voice;
 
                 // Reich-style: slight detuning between voices for phasing
-                if (i > 0 && Math.random() < 0.6) {
-                    const detune = (Math.random() - 0.5) * 1.5; // Very subtle: -0.75 to +0.75 cents
-                    osc.detune.value = detune;
+                if (i > 0 && Math.random() < 0.6 && voice.osc.detune) {
+                    const detune = (Math.random() - 0.5) * 1.5;
+                    voice.osc.detune.value = detune;
                 }
-            }, i * 300); // Slower staggered entry
+            }, i * 300);
         });
     }
 
@@ -1039,15 +1298,31 @@ class PatchUnknown {
                 const ratio = droneRatios[Math.floor(Math.random() * droneRatios.length)];
                 const freq = this.rootNote * ratio;
 
-                // Create rich harmonic drone with multiple partials
-                const fundamental = this.ctx.createOscillator();
-                fundamental.type = 'sine';
-                fundamental.frequency.value = freq;
+                // Occasionally use rich waveforms for textural variety
+                const useRichWaveform = Math.random() < 0.3;
+                const waveform = useRichWaveform ?
+                    ['triangle', 'sawtooth', 'pulse'][Math.floor(Math.random() * 3)] : 'sine';
 
+                // Create main voice with optional filter for timbral shaping
+                const useFilter = Math.random() < 0.5;
+                const voice = this.createRichVoice(freq, {
+                    waveform,
+                    filterCutoff: 200 + Math.random() * 1000, // Dark drones
+                    filterQ: 1 + Math.random() * 4,
+                    filterType: useFilter ? 'lowpass' : 'allpass',
+                    distortion: Math.random() < 0.15 ? 0.05 + Math.random() * 0.15 : 0,
+                    fmDepth: waveform === 'sine' && Math.random() < 0.25 ? 20 + Math.random() * 60 : 0,
+                    fmRatio: [1, 2, 3, 4][Math.floor(Math.random() * 4)],
+                    pwmRate: 0.02 + Math.random() * 0.1, // Very slow PWM for drones
+                    pwmDepth: 3 + Math.random() * 8
+                });
+
+                voice.node.gain.value = 0.12 + Math.random() * 0.06;
+
+                // Create additional partials for harmonic richness
                 const partial2 = this.ctx.createOscillator();
                 partial2.type = 'sine';
                 partial2.frequency.value = freq * 2;
-                // Slight detuning for slow beating (Radigue-style)
                 partial2.detune.value = (Math.random() - 0.5) * 4;
 
                 const partial3 = this.ctx.createOscillator();
@@ -1055,48 +1330,39 @@ class PatchUnknown {
                 partial3.frequency.value = freq * 3;
                 partial3.detune.value = (Math.random() - 0.5) * 6;
 
-                const gain = this.ctx.createGain();
-                gain.gain.value = 0.12 + Math.random() * 0.06;
-
                 const gain2 = this.ctx.createGain();
-                gain2.gain.value = gain.gain.value * 0.4;
+                gain2.gain.value = voice.node.gain.value * 0.4;
 
                 const gain3 = this.ctx.createGain();
-                gain3.gain.value = gain.gain.value * 0.2;
+                gain3.gain.value = voice.node.gain.value * 0.2;
 
                 // Glacial amplitude drift
                 const driftLfo = this.ctx.createOscillator();
                 driftLfo.type = 'sine';
-                driftLfo.frequency.value = 0.01 + Math.random() * 0.03; // 0.01-0.04 Hz = 25-100 second cycles
+                driftLfo.frequency.value = 0.01 + Math.random() * 0.03;
                 const driftGain = this.ctx.createGain();
-                driftGain.gain.value = gain.gain.value * 0.2;
+                driftGain.gain.value = voice.node.gain.value * 0.2;
 
                 driftLfo.connect(driftGain);
-                driftGain.connect(gain.gain);
+                driftGain.connect(voice.node.gain);
 
-                fundamental.connect(gain);
                 partial2.connect(gain2);
                 partial3.connect(gain3);
-                gain.connect(this.masterGain);
+                voice.node.connect(this.masterGain);
                 gain2.connect(this.masterGain);
                 gain3.connect(this.masterGain);
 
-                fundamental.start();
                 partial2.start();
                 partial3.start();
                 driftLfo.start();
 
-                this.cells[index] = {
-                    node: gain,
-                    osc: fundamental,
-                    partials: [partial2, partial3],
-                    partialGains: [gain2, gain3],
-                    lfo: driftLfo,
-                    category: 'osc',
-                    typeName: 'droneVoice',
-                    params: { freq: fundamental.frequency, gain: gain.gain }
-                };
-            }, i * 500); // Very slow staggered entry
+                voice.partials = [partial2, partial3];
+                voice.partialGains = [gain2, gain3];
+                voice.lfo = driftLfo;
+                voice.typeName = 'droneVoice';
+
+                this.cells[index] = voice;
+            }, i * 500);
         });
     }
 
@@ -1163,64 +1429,68 @@ class PatchUnknown {
                 if (!this.isRunning) return;
 
                 const isPercussive = Math.random() < 0.4;
+                const freq = this.rootNote * Math.pow(2, Math.floor(Math.random() * 4));
 
                 if (isPercussive) {
-                    // Percussive click/blip voice
-                    const osc = this.ctx.createOscillator();
-                    osc.type = 'square';
-                    const freq = this.rootNote * Math.pow(2, Math.floor(Math.random() * 4));
-                    osc.frequency.value = freq;
+                    // Percussive click/blip voice - use rich waveforms with distortion
+                    const waveforms = ['square', 'sawtooth', 'pulse', 'triangle'];
+                    const waveform = waveforms[Math.floor(Math.random() * waveforms.length)];
+
+                    const voice = this.createRichVoice(freq, {
+                        waveform,
+                        filterCutoff: freq * 2 + Math.random() * 2000,
+                        filterQ: 3 + Math.random() * 10, // Resonant for percussive edge
+                        filterType: 'bandpass',
+                        distortion: Math.random() < 0.5 ? 0.2 + Math.random() * 0.4 : 0, // 50% distortion
+                        fmDepth: Math.random() < 0.3 ? 50 + Math.random() * 150 : 0, // 30% FM
+                        fmRatio: [1, 2, 3, 5, 7][Math.floor(Math.random() * 5)],
+                        pwmRate: 2 + Math.random() * 6, // Fast PWM for percussive
+                        pwmDepth: 10 + Math.random() * 30
+                    });
+
+                    voice.node.gain.value = 0.1;
 
                     // Rhythmic amplitude gate
                     const ampLfo = this.ctx.createOscillator();
                     ampLfo.type = 'square';
-                    // Polyrhythmic: subdivisions or multiples of implied tempo
                     const rhythmMultipliers = [0.5, 1, 1.5, 2, 3, 4];
-                    const baseRate = 2; // ~120 BPM
+                    const baseRate = 2;
                     ampLfo.frequency.value = baseRate * rhythmMultipliers[Math.floor(Math.random() * rhythmMultipliers.length)];
 
                     const ampDepth = this.ctx.createGain();
                     ampDepth.gain.value = 0.15;
 
-                    const gain = this.ctx.createGain();
-                    gain.gain.value = 0.1;
-
-                    // Bandpass for more percussive tone
-                    const filter = this.ctx.createBiquadFilter();
-                    filter.type = 'bandpass';
-                    filter.frequency.value = freq * 2;
-                    filter.Q.value = 5;
-
                     ampLfo.connect(ampDepth);
-                    ampDepth.connect(gain.gain);
-                    osc.connect(filter);
-                    filter.connect(gain);
-                    gain.connect(this.masterGain);
+                    ampDepth.connect(voice.node.gain);
+                    voice.node.connect(this.masterGain);
 
-                    osc.start();
                     ampLfo.start();
 
-                    this.cells[index] = {
-                        node: gain,
-                        osc,
-                        lfo: ampLfo,
-                        filter,
-                        category: 'osc',
-                        typeName: 'percussiveVoice',
-                        params: { freq: osc.frequency, gain: gain.gain, lfoFreq: ampLfo.frequency }
-                    };
+                    voice.lfo = ampLfo;
+                    voice.typeName = 'percussiveVoice';
+                    voice.params.lfoFreq = ampLfo.frequency;
+
+                    this.cells[index] = voice;
                 } else {
-                    // Pulsing bass/tone voice
-                    const osc = this.ctx.createOscillator();
-                    osc.type = Math.random() < 0.5 ? 'sawtooth' : 'square';
-                    osc.frequency.value = this.rootNote * (Math.random() < 0.5 ? 1 : 2);
+                    // Pulsing bass/tone voice with rich harmonics
+                    const waveforms = ['sawtooth', 'square', 'pulse'];
+                    const waveform = waveforms[Math.floor(Math.random() * waveforms.length)];
+                    const bassFreq = this.rootNote * (Math.random() < 0.5 ? 1 : 2);
 
-                    // Rhythmic filter sweep
-                    const filter = this.ctx.createBiquadFilter();
-                    filter.type = 'lowpass';
-                    filter.frequency.value = 400 + Math.random() * 800;
-                    filter.Q.value = 4 + Math.random() * 8;
+                    const voice = this.createRichVoice(bassFreq, {
+                        waveform,
+                        filterCutoff: 400 + Math.random() * 800,
+                        filterQ: 4 + Math.random() * 8,
+                        filterType: 'lowpass',
+                        distortion: Math.random() < 0.4 ? 0.1 + Math.random() * 0.3 : 0,
+                        fmDepth: 0, // No FM on bass usually
+                        pwmRate: 0.5 + Math.random() * 2,
+                        pwmDepth: 8 + Math.random() * 15
+                    });
 
+                    voice.node.gain.value = 0.12 + Math.random() * 0.06;
+
+                    // Rhythmic filter sweep LFO
                     const filterLfo = this.ctx.createOscillator();
                     filterLfo.type = 'sine';
                     const rhythmRates = [0.5, 1, 2, 4];
@@ -1229,29 +1499,19 @@ class PatchUnknown {
                     const filterDepth = this.ctx.createGain();
                     filterDepth.gain.value = 300 + Math.random() * 500;
 
-                    const gain = this.ctx.createGain();
-                    gain.gain.value = 0.12 + Math.random() * 0.06;
-
                     filterLfo.connect(filterDepth);
-                    filterDepth.connect(filter.frequency);
-                    osc.connect(filter);
-                    filter.connect(gain);
-                    gain.connect(this.masterGain);
+                    filterDepth.connect(voice.filter.frequency);
+                    voice.node.connect(this.masterGain);
 
-                    osc.start();
                     filterLfo.start();
 
-                    this.cells[index] = {
-                        node: gain,
-                        osc,
-                        filter,
-                        lfo: filterLfo,
-                        category: 'osc',
-                        typeName: 'pulsingVoice',
-                        params: { freq: osc.frequency, gain: gain.gain, filterFreq: filter.frequency, lfoFreq: filterLfo.frequency }
-                    };
+                    voice.lfo = filterLfo;
+                    voice.typeName = 'pulsingVoice';
+                    voice.params.lfoFreq = filterLfo.frequency;
+
+                    this.cells[index] = voice;
                 }
-            }, i * 150 + 200); // Quick staggered entry for energy
+            }, i * 150 + 200);
         });
     }
 
@@ -1828,30 +2088,70 @@ class PatchUnknown {
             }
         });
 
-        // Fill remaining slots with useful global controls
-        while (assignments.length < 16) {
-            const remaining = 16 - assignments.length;
-            if (remaining >= 1) {
-                assignments.push({
-                    label: 'RATE',
-                    type: 'global',
-                    param: 'krellEventRate',
-                    value: 1 - (this.krellEventRate - 1000) / 20000,
-                    min: 1000,
-                    max: 20000
-                });
+        // Fill remaining slots with timbral variety controls
+        const timbreControls = [
+            {
+                label: 'WAVE',
+                type: 'global',
+                param: 'waveformBias',
+                value: this.currentWaveformBias,
+                min: 0,
+                max: 1
+            },
+            {
+                label: 'FILT',
+                type: 'global',
+                param: 'filterCutoff',
+                value: this.globalFilterCutoff,
+                min: 0,
+                max: 1
+            },
+            {
+                label: 'RESO',
+                type: 'global',
+                param: 'filterResonance',
+                value: this.globalFilterResonance,
+                min: 0,
+                max: 1
+            },
+            {
+                label: 'FM',
+                type: 'global',
+                param: 'fmDepth',
+                value: this.globalFMDepth,
+                min: 0,
+                max: 1
+            },
+            {
+                label: 'DIST',
+                type: 'global',
+                param: 'distortion',
+                value: this.globalDistortion,
+                min: 0,
+                max: 1
+            },
+            {
+                label: 'RATE',
+                type: 'global',
+                param: 'krellEventRate',
+                value: 1 - (this.krellEventRate - 1000) / 20000,
+                min: 1000,
+                max: 20000
+            },
+            {
+                label: 'DCAY',
+                type: 'global',
+                param: 'decayRate',
+                value: (this.decayRate - 0.999) / 0.001,
+                min: 0.999,
+                max: 1.0
             }
-            if (remaining >= 2) {
-                assignments.push({
-                    label: 'DCAY',
-                    type: 'global',
-                    param: 'decayRate',
-                    value: (this.decayRate - 0.999) / 0.001,
-                    min: 0.999,
-                    max: 1.0
-                });
-            }
-            break;
+        ];
+
+        let timbreIdx = 0;
+        while (assignments.length < 16 && timbreIdx < timbreControls.length) {
+            assignments.push(timbreControls[timbreIdx]);
+            timbreIdx++;
         }
 
         return assignments.slice(0, 16);
@@ -1882,6 +2182,27 @@ class PatchUnknown {
                 case 'decayRate':
                     this.decayRate = 0.999 + normalizedValue * 0.001;
                     break;
+                // Timbral variety controls
+                case 'waveformBias':
+                    this.currentWaveformBias = normalizedValue;
+                    break;
+                case 'filterCutoff':
+                    this.globalFilterCutoff = normalizedValue;
+                    // Apply to all active voice filters
+                    this.applyGlobalFilter();
+                    break;
+                case 'filterResonance':
+                    this.globalFilterResonance = normalizedValue;
+                    this.applyGlobalFilter();
+                    break;
+                case 'fmDepth':
+                    this.globalFMDepth = normalizedValue;
+                    this.applyGlobalFM();
+                    break;
+                case 'distortion':
+                    this.globalDistortion = normalizedValue;
+                    this.applyGlobalDistortion();
+                    break;
             }
         } else if (assignment.type === 'cell') {
             const cell = this.cells[assignment.cellIndex];
@@ -1906,6 +2227,48 @@ class PatchUnknown {
             const newFreq = 100 * Math.pow(120, normalizedValue); // Log scale 100-12000 Hz
             cell.filter.frequency.setTargetAtTime(newFreq, this.ctx.currentTime, 0.05);
         }
+    }
+
+    // Apply global filter settings to all voices with filters
+    applyGlobalFilter() {
+        const cutoffHz = 100 + this.globalFilterCutoff * 8000; // 100-8100 Hz
+        const q = 0.5 + this.globalFilterResonance * 15; // 0.5-15.5 Q
+
+        this.cells.forEach(cell => {
+            if (!cell || !cell.filter) return;
+
+            cell.filter.frequency.setTargetAtTime(cutoffHz, this.ctx.currentTime, 0.1);
+            cell.filter.Q.setTargetAtTime(q, this.ctx.currentTime, 0.1);
+        });
+    }
+
+    // Apply global FM depth to all FM voices
+    applyGlobalFM() {
+        const depthHz = this.globalFMDepth * 500; // 0-500 Hz deviation
+
+        this.cells.forEach(cell => {
+            if (!cell || !cell.modulator) return;
+
+            // Find the modGain node (FM depth control)
+            if (cell.params && cell.params.fmDepth) {
+                // For voices with modGain accessible
+                const modGainNode = cell.modGain ||
+                    (cell.modulator && cell.modulator._modGain);
+                if (modGainNode && modGainNode.gain) {
+                    modGainNode.gain.setTargetAtTime(depthHz, this.ctx.currentTime, 0.1);
+                }
+            }
+        });
+    }
+
+    // Apply global distortion to all voices with distortion
+    applyGlobalDistortion() {
+        this.cells.forEach(cell => {
+            if (!cell || !cell.distortion) return;
+
+            // Update the waveshaper curve
+            this.updateVoiceDistortion(cell.distortion, this.globalDistortion);
+        });
     }
 }
 
