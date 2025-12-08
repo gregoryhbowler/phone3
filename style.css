@@ -224,7 +224,16 @@ html, body {
     display: flex;
     gap: 4px;
     overflow-x: auto;
+    overflow-y: hidden;
     padding-right: 4px;
+    min-width: 0;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+#scale-selector::-webkit-scrollbar {
+    display: none;
 }
 
 .scale-btn {
@@ -238,6 +247,7 @@ html, body {
     cursor: pointer;
     white-space: nowrap;
     text-transform: lowercase;
+    flex-shrink: 0;
 }
 
 .scale-btn.active {
