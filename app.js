@@ -483,20 +483,26 @@ function createMacroGrid() {
         // Touch/drag handling for knob
         let startY = 0;
         let startValue = 0;
+        let isDragging = false;
 
         const handleStart = (e) => {
-            e.preventDefault();
             const touch = e.touches ? e.touches[0] : e;
             startY = touch.clientY;
             startValue = macroAssignments[i]?.value || 0.5;
+            isDragging = false;
             knob.classList.add('active');
         };
 
         const handleMove = (e) => {
             if (!knob.classList.contains('active')) return;
-            e.preventDefault();
             const touch = e.touches ? e.touches[0] : e;
             const deltaY = startY - touch.clientY;
+
+            // Only start dragging after threshold to allow scroll
+            if (!isDragging && Math.abs(deltaY) < 10) return;
+            isDragging = true;
+            e.preventDefault();
+
             const newValue = Math.max(0, Math.min(1, startValue + deltaY / 100));
 
             if (macroAssignments[i]) {
@@ -510,9 +516,10 @@ function createMacroGrid() {
 
         const handleEnd = () => {
             knob.classList.remove('active');
+            isDragging = false;
         };
 
-        knob.addEventListener('touchstart', handleStart, { passive: false });
+        knob.addEventListener('touchstart', handleStart, { passive: true });
         knob.addEventListener('touchmove', handleMove, { passive: false });
         knob.addEventListener('touchend', handleEnd);
         knob.addEventListener('mousedown', handleStart);
@@ -812,20 +819,26 @@ function createSeqMacroGrid() {
         // Touch/drag handling for knob
         let startY = 0;
         let startValue = 0;
+        let isDragging = false;
 
         const handleStart = (e) => {
-            e.preventDefault();
             const touch = e.touches ? e.touches[0] : e;
             startY = touch.clientY;
             startValue = macroAssignments[i]?.value || 0.5;
+            isDragging = false;
             knob.classList.add('active');
         };
 
         const handleMove = (e) => {
             if (!knob.classList.contains('active')) return;
-            e.preventDefault();
             const touch = e.touches ? e.touches[0] : e;
             const deltaY = startY - touch.clientY;
+
+            // Only start dragging after threshold to allow scroll
+            if (!isDragging && Math.abs(deltaY) < 10) return;
+            isDragging = true;
+            e.preventDefault();
+
             const newValue = Math.max(0, Math.min(1, startValue + deltaY / 100));
 
             if (macroAssignments[i]) {
@@ -839,9 +852,10 @@ function createSeqMacroGrid() {
 
         const handleEnd = () => {
             knob.classList.remove('active');
+            isDragging = false;
         };
 
-        knob.addEventListener('touchstart', handleStart, { passive: false });
+        knob.addEventListener('touchstart', handleStart, { passive: true });
         knob.addEventListener('touchmove', handleMove, { passive: false });
         knob.addEventListener('touchend', handleEnd);
         knob.addEventListener('mousedown', handleStart);
@@ -995,20 +1009,26 @@ function createSeqGrid() {
         // Touch/drag handling for note knob
         let startY = 0;
         let startValue = 0;
+        let isDragging = false;
 
         const handleKnobStart = (e) => {
-            e.preventDefault();
             const touch = e.touches ? e.touches[0] : e;
             startY = touch.clientY;
             startValue = seqNotes[i];
+            isDragging = false;
             knob.classList.add('dragging');
         };
 
         const handleKnobMove = (e) => {
             if (!knob.classList.contains('dragging')) return;
-            e.preventDefault();
             const touch = e.touches ? e.touches[0] : e;
             const deltaY = startY - touch.clientY;
+
+            // Only start dragging after threshold to allow scroll
+            if (!isDragging && Math.abs(deltaY) < 10) return;
+            isDragging = true;
+            e.preventDefault();
+
             // 4 octaves * scale length = total notes
             const maxNote = scale.length * 4 - 1;
             const newValue = Math.max(0, Math.min(maxNote, Math.round(startValue + deltaY / 8)));
@@ -1018,9 +1038,10 @@ function createSeqGrid() {
 
         const handleKnobEnd = () => {
             knob.classList.remove('dragging');
+            isDragging = false;
         };
 
-        knob.addEventListener('touchstart', handleKnobStart, { passive: false });
+        knob.addEventListener('touchstart', handleKnobStart, { passive: true });
         knob.addEventListener('touchmove', handleKnobMove, { passive: false });
         knob.addEventListener('touchend', handleKnobEnd);
         knob.addEventListener('mousedown', handleKnobStart);
@@ -1288,21 +1309,26 @@ function createTransposeCell(index) {
     // Touch/drag handling for transpose knob
     let startY = 0;
     let startValue = 0;
+    let isDragging = false;
 
     const handleKnobStart = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
         const touch = e.touches ? e.touches[0] : e;
         startY = touch.clientY;
         startValue = cellData.transpose;
+        isDragging = false;
         knob.classList.add('dragging');
     };
 
     const handleKnobMove = (e) => {
         if (!knob.classList.contains('dragging')) return;
-        e.preventDefault();
         const touch = e.touches ? e.touches[0] : e;
         const deltaY = startY - touch.clientY;
+
+        // Only start dragging after threshold to allow scroll
+        if (!isDragging && Math.abs(deltaY) < 10) return;
+        isDragging = true;
+        e.preventDefault();
+
         const newValue = Math.max(-12, Math.min(12, Math.round(startValue + deltaY / 6)));
         cellData.transpose = newValue;
         updateTransposeCellVisual(cell, cellData);
@@ -1310,9 +1336,10 @@ function createTransposeCell(index) {
 
     const handleKnobEnd = () => {
         knob.classList.remove('dragging');
+        isDragging = false;
     };
 
-    knob.addEventListener('touchstart', handleKnobStart, { passive: false });
+    knob.addEventListener('touchstart', handleKnobStart, { passive: true });
     knob.addEventListener('touchmove', handleKnobMove, { passive: false });
     knob.addEventListener('touchend', handleKnobEnd);
     knob.addEventListener('mousedown', handleKnobStart);
