@@ -78,19 +78,19 @@ function setupHeader() {
     modeToggle.addEventListener('touchstart', (e) => {
         e.preventDefault();
         toggleMode();
-    });
+    }, { passive: false });
 
     recordBtn.addEventListener('click', toggleRecording);
     recordBtn.addEventListener('touchstart', (e) => {
         e.preventDefault();
         toggleRecording();
-    });
+    }, { passive: false });
 
     seqToggle.addEventListener('click', toggleSeqMode);
     seqToggle.addEventListener('touchstart', (e) => {
         e.preventDefault();
         toggleSeqMode();
-    });
+    }, { passive: false });
 }
 
 // Toggle between patch and play modes
@@ -768,6 +768,10 @@ function createSeqMacroGrid() {
         const label = document.createElement('div');
         label.className = 'knob-label';
 
+        // Append elements first before updating visuals
+        knob.appendChild(visual);
+        knob.appendChild(label);
+
         const assignment = macroAssignments[i];
         if (assignment) {
             label.textContent = assignment.label;
@@ -776,9 +780,6 @@ function createSeqMacroGrid() {
             label.textContent = '---';
             updateKnobVisual(knob, 0.5);
         }
-
-        knob.appendChild(visual);
-        knob.appendChild(label);
 
         // Touch/drag handling for knob
         let startY = 0;
