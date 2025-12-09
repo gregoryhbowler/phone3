@@ -37,6 +37,20 @@ let transposeSeqCells = new Array(8).fill(null).map(() => ({
 let transposeSeqCurrentCell = 0; // current cell index (within enabled cells)
 let transposeSeqLoopCount = 0; // counts loops for cycle advancement
 
+// LFO state
+const LFO_SHAPES = ['sine', 'tri', 'saw', 'sqr', 'rnd', 's&h'];
+let lfos = new Array(6).fill(null).map((_, i) => ({
+    enabled: false,
+    shape: 0, // index into LFO_SHAPES
+    rate: 0.5, // 0-1 normalized (maps to 0.01-20 Hz)
+    depth: 0.5, // 0-1
+    destination: 0 // 0-15 = macros, 16-21 = LFO 1-6 rate
+}));
+let lfoPhases = new Array(6).fill(0);
+let lfoValues = new Array(6).fill(0);
+let lfoAnimationId = null;
+let lastLfoTime = 0;
+
 // Cryptic cell assignments - these indices determine behavior
 // but the user should never understand the mapping
 const MELODIC_CELL = 0;   // Upper left - yearning arpeggios (Barbieri, Glass, Reich, Pärt)
@@ -754,6 +768,8 @@ function createSequencerUI() {
     setupSeqControls();
     setupSeqEnvelopeControls();
     createTransposeSeqUI();
+    createLfoUI();
+    startLfoEngine();
 }
 
 // Create 16 macro knobs for sequencer (2 rows of 8)
@@ -1496,6 +1512,387 @@ function advanceTransposeSeq() {
         }
 
         updateTransposeSeqCurrentCell();
+    }
+}
+
+// ============== LFO SYSTEM ==============
+
+// Get destination name for display
+function getLfoDestName(destIndex, lfoIndex) {
+    if (destIndex < 16) {
+        // Macro destination
+        const assignment = macroAssignments[destIndex];
+        return assignment ? assignment.label : `M${destIndex + 1}`;
+    } else {
+        // LFO rate destination (16-21 = LFO 1-6)
+        const targetLfo = destIndex - 16;
+        if (targetLfo === lfoIndex) {
+            return 'SELF'; // Can't modulate self, will skip
+        }
+        return `L${targetLfo + 1}RT`;
+    }
+}
+
+// Get total number of destinations (16 macros + 6 LFO rates)
+function getLfoDestCount() {
+    return 22;
+}
+
+// Create the LFO UI
+function createLfoUI() {
+    const lfoGrid = document.getElementById('lfo-grid');
+    if (!lfoGrid) return;
+
+    lfoGrid.innerHTML = '';
+
+    for (let i = 0; i < 6; i++) {
+        const cell = createLfoCell(i);
+        lfoGrid.appendChild(cell);
+    }
+}
+
+// Create a single LFO cell
+function createLfoCell(index) {
+    const lfo = lfos[index];
+    const cell = document.createElement('div');
+    cell.className = 'lfo-cell' + (lfo.enabled ? ' active' : '');
+    cell.dataset.index = index;
+
+    // Header row: enable button + shape selector
+    const headerRow = document.createElement('div');
+    headerRow.className = 'lfo-header-row';
+
+    const enableBtn = document.createElement('button');
+    enableBtn.className = 'lfo-enable' + (lfo.enabled ? ' active' : '');
+    enableBtn.textContent = index + 1;
+    enableBtn.addEventListener('click', () => toggleLfo(index));
+    enableBtn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        toggleLfo(index);
+    }, { passive: false });
+
+    const shapeBtn = document.createElement('button');
+    shapeBtn.className = 'lfo-shape';
+    shapeBtn.textContent = LFO_SHAPES[lfo.shape];
+    shapeBtn.addEventListener('click', () => cycleLfoShape(index));
+    shapeBtn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        cycleLfoShape(index);
+    }, { passive: false });
+
+    headerRow.appendChild(enableBtn);
+    headerRow.appendChild(shapeBtn);
+
+    // Visual waveform display
+    const visual = document.createElement('div');
+    visual.className = 'lfo-visual';
+
+    const wave = document.createElement('canvas');
+    wave.className = 'lfo-wave';
+    wave.width = 80;
+    wave.height = 20;
+    drawLfoWave(wave, lfo.shape);
+
+    const indicator = document.createElement('div');
+    indicator.className = 'lfo-indicator';
+
+    visual.appendChild(wave);
+    visual.appendChild(indicator);
+
+    // Rate row
+    const rateRow = document.createElement('div');
+    rateRow.className = 'lfo-param-row';
+
+    const rateLabel = document.createElement('span');
+    rateLabel.className = 'lfo-param-label';
+    rateLabel.textContent = 'RT';
+
+    const rateSlider = document.createElement('input');
+    rateSlider.type = 'range';
+    rateSlider.className = 'lfo-slider';
+    rateSlider.min = '0';
+    rateSlider.max = '100';
+    rateSlider.value = lfo.rate * 100;
+    rateSlider.addEventListener('input', (e) => {
+        lfo.rate = e.target.value / 100;
+    });
+
+    rateRow.appendChild(rateLabel);
+    rateRow.appendChild(rateSlider);
+
+    // Depth row
+    const depthRow = document.createElement('div');
+    depthRow.className = 'lfo-param-row';
+
+    const depthLabel = document.createElement('span');
+    depthLabel.className = 'lfo-param-label';
+    depthLabel.textContent = 'DP';
+
+    const depthSlider = document.createElement('input');
+    depthSlider.type = 'range';
+    depthSlider.className = 'lfo-slider';
+    depthSlider.min = '0';
+    depthSlider.max = '100';
+    depthSlider.value = lfo.depth * 100;
+    depthSlider.addEventListener('input', (e) => {
+        lfo.depth = e.target.value / 100;
+    });
+
+    depthRow.appendChild(depthLabel);
+    depthRow.appendChild(depthSlider);
+
+    // Destination row
+    const destRow = document.createElement('div');
+    destRow.className = 'lfo-dest-row';
+
+    const destPrev = document.createElement('button');
+    destPrev.className = 'lfo-dest-prev';
+    destPrev.textContent = '◂';
+    destPrev.addEventListener('click', () => changeLfoDest(index, -1));
+    destPrev.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        changeLfoDest(index, -1);
+    }, { passive: false });
+
+    const destDisplay = document.createElement('div');
+    destDisplay.className = 'lfo-dest';
+    destDisplay.textContent = getLfoDestName(lfo.destination, index);
+
+    const destNext = document.createElement('button');
+    destNext.className = 'lfo-dest-next';
+    destNext.textContent = '▸';
+    destNext.addEventListener('click', () => changeLfoDest(index, 1));
+    destNext.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        changeLfoDest(index, 1);
+    }, { passive: false });
+
+    destRow.appendChild(destPrev);
+    destRow.appendChild(destDisplay);
+    destRow.appendChild(destNext);
+
+    // Assemble cell
+    cell.appendChild(headerRow);
+    cell.appendChild(visual);
+    cell.appendChild(rateRow);
+    cell.appendChild(depthRow);
+    cell.appendChild(destRow);
+
+    return cell;
+}
+
+// Draw LFO waveform on canvas
+function drawLfoWave(canvas, shapeIndex) {
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width;
+    const h = canvas.height;
+    const mid = h / 2;
+
+    ctx.clearRect(0, 0, w, h);
+    ctx.strokeStyle = '#3a5a5a';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+
+    for (let x = 0; x < w; x++) {
+        const phase = (x / w) * 2; // 2 cycles
+        let y;
+
+        switch (shapeIndex) {
+            case 0: // sine
+                y = Math.sin(phase * Math.PI * 2) * 0.8;
+                break;
+            case 1: // tri
+                y = (Math.abs((phase % 1) * 4 - 2) - 1) * 0.8;
+                break;
+            case 2: // saw
+                y = ((phase % 1) * 2 - 1) * 0.8;
+                break;
+            case 3: // sqr
+                y = ((phase % 1) < 0.5 ? 1 : -1) * 0.6;
+                break;
+            case 4: // rnd (smooth random approximation)
+                y = Math.sin(phase * Math.PI * 7.3) * Math.cos(phase * Math.PI * 3.1) * 0.8;
+                break;
+            case 5: // s&h (stepped)
+                const step = Math.floor(phase * 4);
+                const vals = [0.6, -0.4, 0.2, -0.8];
+                y = vals[step % 4];
+                break;
+            default:
+                y = 0;
+        }
+
+        const py = mid - y * (h / 2 - 2);
+        if (x === 0) {
+            ctx.moveTo(x, py);
+        } else {
+            ctx.lineTo(x, py);
+        }
+    }
+
+    ctx.stroke();
+}
+
+// Toggle LFO on/off
+function toggleLfo(index) {
+    const lfo = lfos[index];
+    lfo.enabled = !lfo.enabled;
+
+    const cell = document.querySelector(`.lfo-cell[data-index="${index}"]`);
+    const enableBtn = cell?.querySelector('.lfo-enable');
+
+    if (cell) cell.classList.toggle('active', lfo.enabled);
+    if (enableBtn) enableBtn.classList.toggle('active', lfo.enabled);
+
+    // Reset phase when enabling
+    if (lfo.enabled) {
+        lfoPhases[index] = 0;
+    }
+}
+
+// Cycle through LFO shapes
+function cycleLfoShape(index) {
+    const lfo = lfos[index];
+    lfo.shape = (lfo.shape + 1) % LFO_SHAPES.length;
+
+    const cell = document.querySelector(`.lfo-cell[data-index="${index}"]`);
+    const shapeBtn = cell?.querySelector('.lfo-shape');
+    const wave = cell?.querySelector('.lfo-wave');
+
+    if (shapeBtn) shapeBtn.textContent = LFO_SHAPES[lfo.shape];
+    if (wave) drawLfoWave(wave, lfo.shape);
+}
+
+// Change LFO destination
+function changeLfoDest(index, delta) {
+    const lfo = lfos[index];
+    const destCount = getLfoDestCount();
+
+    lfo.destination = (lfo.destination + delta + destCount) % destCount;
+
+    // Skip self-modulation for LFO rate destinations
+    if (lfo.destination >= 16 && lfo.destination - 16 === index) {
+        lfo.destination = (lfo.destination + delta + destCount) % destCount;
+    }
+
+    const cell = document.querySelector(`.lfo-cell[data-index="${index}"]`);
+    const destDisplay = cell?.querySelector('.lfo-dest');
+
+    if (destDisplay) destDisplay.textContent = getLfoDestName(lfo.destination, index);
+}
+
+// Calculate LFO value based on shape and phase
+function calculateLfoValue(shapeIndex, phase) {
+    switch (shapeIndex) {
+        case 0: // sine
+            return Math.sin(phase * Math.PI * 2);
+        case 1: // tri
+            return Math.abs((phase % 1) * 4 - 2) - 1;
+        case 2: // saw
+            return (phase % 1) * 2 - 1;
+        case 3: // sqr
+            return (phase % 1) < 0.5 ? 1 : -1;
+        case 4: // rnd (smooth noise using phase)
+            return Math.sin(phase * 13.7) * Math.cos(phase * 7.3);
+        case 5: // s&h (sample and hold - steps)
+            // Update value only at integer phase boundaries
+            return Math.sin(Math.floor(phase * 4) * 2.3) * Math.cos(Math.floor(phase * 4) * 1.7);
+        default:
+            return 0;
+    }
+}
+
+// Start the LFO engine (runs continuously when in seq mode)
+function startLfoEngine() {
+    if (lfoAnimationId) return;
+
+    lastLfoTime = performance.now();
+
+    function updateLfos() {
+        const now = performance.now();
+        const deltaTime = (now - lastLfoTime) / 1000; // seconds
+        lastLfoTime = now;
+
+        // Only process if in seq mode
+        if (currentMode !== 'seq') {
+            lfoAnimationId = requestAnimationFrame(updateLfos);
+            return;
+        }
+
+        // First pass: calculate all LFO values
+        for (let i = 0; i < 6; i++) {
+            const lfo = lfos[i];
+            if (!lfo.enabled) {
+                lfoValues[i] = 0;
+                continue;
+            }
+
+            // Map rate 0-1 to Hz (0.01 to 20 Hz, exponential)
+            let rateHz = 0.01 * Math.pow(2000, lfo.rate);
+
+            // Check if another LFO is modulating this LFO's rate
+            for (let j = 0; j < 6; j++) {
+                if (i !== j && lfos[j].enabled && lfos[j].destination === 16 + i) {
+                    // Modulate rate by +/- 50%
+                    rateHz *= 1 + lfoValues[j] * lfos[j].depth * 0.5;
+                }
+            }
+
+            // Update phase
+            lfoPhases[i] += rateHz * deltaTime;
+            if (lfoPhases[i] > 1000) lfoPhases[i] -= 1000; // Prevent overflow
+
+            // Calculate value
+            lfoValues[i] = calculateLfoValue(lfo.shape, lfoPhases[i]);
+        }
+
+        // Second pass: apply LFO modulation to macros
+        for (let i = 0; i < 6; i++) {
+            const lfo = lfos[i];
+            if (!lfo.enabled || lfo.destination >= 16) continue;
+
+            const macroIndex = lfo.destination;
+            const assignment = macroAssignments[macroIndex];
+            if (!assignment) continue;
+
+            // Calculate modulated value
+            const modAmount = lfoValues[i] * lfo.depth;
+            const baseValue = assignment.value;
+            const modValue = Math.max(0, Math.min(1, baseValue + modAmount * 0.5));
+
+            // Apply to synth (but don't update stored value)
+            synth.setMacroValue(macroIndex, modValue, assignment);
+        }
+
+        // Update visual indicators
+        updateLfoVisuals();
+
+        lfoAnimationId = requestAnimationFrame(updateLfos);
+    }
+
+    lfoAnimationId = requestAnimationFrame(updateLfos);
+}
+
+// Stop LFO engine
+function stopLfoEngine() {
+    if (lfoAnimationId) {
+        cancelAnimationFrame(lfoAnimationId);
+        lfoAnimationId = null;
+    }
+}
+
+// Update LFO visual indicators
+function updateLfoVisuals() {
+    for (let i = 0; i < 6; i++) {
+        const cell = document.querySelector(`.lfo-cell[data-index="${i}"]`);
+        if (!cell) continue;
+
+        const indicator = cell.querySelector('.lfo-indicator');
+        if (indicator && lfos[i].enabled) {
+            // Map LFO value (-1 to 1) to position (10% to 90%)
+            const pos = 50 + lfoValues[i] * 40;
+            indicator.style.left = `${pos}%`;
+        }
     }
 }
 

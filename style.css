@@ -601,6 +601,243 @@ html, body {
     color: #6a8a6a;
 }
 
+/* LFO Section */
+#lfo-section {
+    flex: 0 0 auto;
+    background: #0c0c0c;
+    border: 1px solid #1a1a1a;
+    border-radius: 4px;
+    margin-top: 4px;
+    padding: 4px;
+}
+
+#lfo-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 4px 8px 4px;
+    border-bottom: 1px solid #151515;
+    margin-bottom: 4px;
+}
+
+#lfo-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+    gap: 4px;
+    padding: 4px 0;
+}
+
+.lfo-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    border-radius: 4px;
+    padding: 6px;
+}
+
+.lfo-cell.active {
+    border-color: #3a5a5a;
+    background: #121a1a;
+}
+
+.lfo-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+}
+
+.lfo-enable {
+    width: 24px;
+    height: 18px;
+    background: #252525;
+    border: 1px solid #3a3a3a;
+    border-radius: 3px;
+    color: #444;
+    font-size: 9px;
+    font-family: 'Courier New', monospace;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.lfo-enable.active {
+    background: #2a3a3a;
+    border-color: #4a5a5a;
+    color: #8aa;
+}
+
+.lfo-shape {
+    flex: 1;
+    height: 18px;
+    background: #252525;
+    border: 1px solid #3a3a3a;
+    border-radius: 3px;
+    color: #555;
+    font-size: 8px;
+    font-family: 'Courier New', monospace;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-transform: uppercase;
+}
+
+.lfo-cell.active .lfo-shape {
+    color: #8aa;
+    border-color: #4a5a5a;
+}
+
+.lfo-visual {
+    height: 20px;
+    background: #151515;
+    border-radius: 2px;
+    position: relative;
+    overflow: hidden;
+}
+
+.lfo-wave {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.lfo-indicator {
+    position: absolute;
+    width: 2px;
+    height: 100%;
+    background: #5a8a8a;
+    left: 50%;
+    transform: translateX(-50%);
+    opacity: 0;
+}
+
+.lfo-cell.active .lfo-indicator {
+    opacity: 1;
+}
+
+.lfo-param-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.lfo-param-label {
+    font-size: 7px;
+    color: #444;
+    font-family: 'Courier New', monospace;
+    text-transform: uppercase;
+    width: 18px;
+    flex-shrink: 0;
+}
+
+.lfo-cell.active .lfo-param-label {
+    color: #6a8a8a;
+}
+
+.lfo-slider {
+    flex: 1;
+    height: 16px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    outline: none;
+    touch-action: pan-x;
+}
+
+.lfo-slider::-webkit-slider-runnable-track {
+    height: 3px;
+    background: #2a2a2a;
+    border-radius: 2px;
+}
+
+.lfo-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    background: #4a5a5a;
+    border-radius: 50%;
+    cursor: pointer;
+    margin-top: -4px;
+}
+
+.lfo-cell.active .lfo-slider::-webkit-slider-thumb {
+    background: #6a8a8a;
+}
+
+.lfo-slider::-moz-range-track {
+    height: 3px;
+    background: #2a2a2a;
+    border-radius: 2px;
+}
+
+.lfo-slider::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    background: #4a5a5a;
+    border-radius: 50%;
+    cursor: pointer;
+    border: none;
+}
+
+.lfo-cell.active .lfo-slider::-moz-range-thumb {
+    background: #6a8a8a;
+}
+
+.lfo-dest-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.lfo-dest {
+    flex: 1;
+    height: 18px;
+    background: #252525;
+    border: 1px solid #3a3a3a;
+    border-radius: 3px;
+    color: #555;
+    font-size: 7px;
+    font-family: 'Courier New', monospace;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-transform: uppercase;
+}
+
+.lfo-cell.active .lfo-dest {
+    color: #8aa;
+    border-color: #4a5a5a;
+}
+
+.lfo-dest-prev,
+.lfo-dest-next {
+    width: 16px;
+    height: 18px;
+    background: #252525;
+    border: 1px solid #3a3a3a;
+    border-radius: 2px;
+    color: #555;
+    font-size: 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.lfo-dest-prev:active,
+.lfo-dest-next:active {
+    background: #3a3a3a;
+}
+
 /* Play mode container */
 #play-mode {
     flex: 1;
