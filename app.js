@@ -485,15 +485,11 @@ function createMacroGrid() {
         knob.appendChild(visual);
         knob.appendChild(label);
 
-        // Pointer-based drag with hold-to-engage
+        // Pointer-based drag - immediate response, knobs work directly
         let startY = 0;
         let startValue = 0;
-        let engaged = false;
-        let holdTimer = null;
 
         const handlePointerMove = (e) => {
-            if (!engaged) return; // Only drag if engaged via hold
-
             const deltaY = startY - e.clientY;
             const newValue = Math.max(0, Math.min(1, startValue + deltaY / 100));
 
@@ -506,26 +502,18 @@ function createMacroGrid() {
         };
 
         const handlePointerUp = () => {
-            if (holdTimer) clearTimeout(holdTimer);
-            engaged = false;
-            knob.classList.remove('active', 'dragging');
+            knob.classList.remove('active');
             knob.removeEventListener('pointermove', handlePointerMove);
             knob.removeEventListener('pointerup', handlePointerUp);
             knob.removeEventListener('pointercancel', handlePointerUp);
         };
 
         knob.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
             startY = e.clientY;
             startValue = macroAssignments[i]?.value || 0.5;
-            engaged = false;
-
-            // Short hold to engage knob (allows quick swipes to scroll)
-            holdTimer = setTimeout(() => {
-                engaged = true;
-                knob.classList.add('active', 'dragging');
-                knob.setPointerCapture(e.pointerId);
-            }, 150);
-
+            knob.classList.add('active');
+            knob.setPointerCapture(e.pointerId);
             knob.addEventListener('pointermove', handlePointerMove);
             knob.addEventListener('pointerup', handlePointerUp);
             knob.addEventListener('pointercancel', handlePointerUp);
@@ -821,15 +809,11 @@ function createSeqMacroGrid() {
             updateKnobVisual(knob, 0.5);
         }
 
-        // Pointer-based drag with hold-to-engage
+        // Pointer-based drag - immediate response, knobs work directly
         let startY = 0;
         let startValue = 0;
-        let engaged = false;
-        let holdTimer = null;
 
         const handlePointerMove = (e) => {
-            if (!engaged) return; // Only drag if engaged via hold
-
             const deltaY = startY - e.clientY;
             const newValue = Math.max(0, Math.min(1, startValue + deltaY / 100));
 
@@ -842,26 +826,18 @@ function createSeqMacroGrid() {
         };
 
         const handlePointerUp = () => {
-            if (holdTimer) clearTimeout(holdTimer);
-            engaged = false;
-            knob.classList.remove('active', 'dragging');
+            knob.classList.remove('active');
             knob.removeEventListener('pointermove', handlePointerMove);
             knob.removeEventListener('pointerup', handlePointerUp);
             knob.removeEventListener('pointercancel', handlePointerUp);
         };
 
         knob.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
             startY = e.clientY;
             startValue = macroAssignments[i]?.value || 0.5;
-            engaged = false;
-
-            // Short hold to engage knob (allows quick swipes to scroll)
-            holdTimer = setTimeout(() => {
-                engaged = true;
-                knob.classList.add('active', 'dragging');
-                knob.setPointerCapture(e.pointerId);
-            }, 150);
-
+            knob.classList.add('active');
+            knob.setPointerCapture(e.pointerId);
             knob.addEventListener('pointermove', handlePointerMove);
             knob.addEventListener('pointerup', handlePointerUp);
             knob.addEventListener('pointercancel', handlePointerUp);
@@ -1011,15 +987,11 @@ function createSeqGrid() {
         knob.appendChild(knobVisual);
         knob.appendChild(noteLabel);
 
-        // Pointer-based drag with hold-to-engage
+        // Pointer-based drag - immediate response, knobs work directly
         let startY = 0;
         let startValue = 0;
-        let engaged = false;
-        let holdTimer = null;
 
         const handlePointerMove = (e) => {
-            if (!engaged) return; // Only drag if engaged via hold
-
             const deltaY = startY - e.clientY;
             const maxNote = scale.length * 4 - 1;
             const newValue = Math.max(0, Math.min(maxNote, Math.round(startValue + deltaY / 8)));
@@ -1028,26 +1000,18 @@ function createSeqGrid() {
         };
 
         const handlePointerUp = () => {
-            if (holdTimer) clearTimeout(holdTimer);
-            engaged = false;
-            knob.classList.remove('dragging');
+            knob.classList.remove('active');
             knob.removeEventListener('pointermove', handlePointerMove);
             knob.removeEventListener('pointerup', handlePointerUp);
             knob.removeEventListener('pointercancel', handlePointerUp);
         };
 
         knob.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
             startY = e.clientY;
             startValue = seqNotes[i];
-            engaged = false;
-
-            // Short hold to engage knob (allows quick swipes to scroll)
-            holdTimer = setTimeout(() => {
-                engaged = true;
-                knob.classList.add('dragging');
-                knob.setPointerCapture(e.pointerId);
-            }, 150);
-
+            knob.classList.add('active');
+            knob.setPointerCapture(e.pointerId);
             knob.addEventListener('pointermove', handlePointerMove);
             knob.addEventListener('pointerup', handlePointerUp);
             knob.addEventListener('pointercancel', handlePointerUp);
@@ -1303,15 +1267,11 @@ function createTransposeCell(index) {
     indicator.className = 'transpose-cell-indicator';
     knob.appendChild(indicator);
 
-    // Pointer-based drag with hold-to-engage
+    // Pointer-based drag - immediate response, knobs work directly
     let startY = 0;
     let startValue = 0;
-    let engaged = false;
-    let holdTimer = null;
 
     const handlePointerMove = (e) => {
-        if (!engaged) return; // Only drag if engaged via hold
-
         const deltaY = startY - e.clientY;
         const newValue = Math.max(-12, Math.min(12, Math.round(startValue + deltaY / 6)));
         cellData.transpose = newValue;
@@ -1319,26 +1279,18 @@ function createTransposeCell(index) {
     };
 
     const handlePointerUp = () => {
-        if (holdTimer) clearTimeout(holdTimer);
-        engaged = false;
-        knob.classList.remove('dragging');
+        knob.classList.remove('active');
         knob.removeEventListener('pointermove', handlePointerMove);
         knob.removeEventListener('pointerup', handlePointerUp);
         knob.removeEventListener('pointercancel', handlePointerUp);
     };
 
     knob.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
         startY = e.clientY;
         startValue = cellData.transpose;
-        engaged = false;
-
-        // Short hold to engage knob (allows quick swipes to scroll)
-        holdTimer = setTimeout(() => {
-            engaged = true;
-            knob.classList.add('dragging');
-            knob.setPointerCapture(e.pointerId);
-        }, 150);
-
+        knob.classList.add('active');
+        knob.setPointerCapture(e.pointerId);
         knob.addEventListener('pointermove', handlePointerMove);
         knob.addEventListener('pointerup', handlePointerUp);
         knob.addEventListener('pointercancel', handlePointerUp);

@@ -316,10 +316,6 @@ html, body {
     justify-content: center;
     cursor: pointer;
     position: relative;
-    touch-action: pan-y;
-}
-
-.seq-knob.dragging {
     touch-action: none;
 }
 
@@ -540,10 +536,6 @@ html, body {
     border-radius: 50%;
     position: relative;
     cursor: pointer;
-    touch-action: pan-y;
-}
-
-.transpose-cell-knob.dragging {
     touch-action: none;
 }
 
@@ -890,10 +882,6 @@ html, body {
     cursor: pointer;
     position: relative;
     overflow: hidden;
-    touch-action: pan-y;
-}
-
-.macro-knob.dragging {
     touch-action: none;
 }
 
