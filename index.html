@@ -22,6 +22,7 @@
             <div id="grid"></div>
         </div>
         <div id="seq-mode" class="hidden">
+            <div id="seq-macro-grid"></div>
             <div id="seq-controls">
                 <div id="seq-length-row">
                     <span class="seq-label">LEN</span>
@@ -34,6 +35,13 @@
                     <span class="seq-label">TRN</span>
                     <input type="range" id="seq-transpose" class="seq-slider" min="-12" max="12" value="0">
                     <span id="seq-transpose-value" class="seq-value">0</span>
+                </div>
+                <div id="seq-env-row">
+                    <button id="seq-env-toggle" class="env-btn" aria-label="Toggle envelope">◇</button>
+                    <span class="env-label">ATK</span>
+                    <input type="range" id="seq-env-attack" class="env-slider" min="0" max="100" value="1">
+                    <span class="env-label">DCY</span>
+                    <input type="range" id="seq-env-decay" class="env-slider" min="0" max="100" value="50">
                 </div>
             </div>
             <div id="seq-grid">

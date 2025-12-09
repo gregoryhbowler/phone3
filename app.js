@@ -478,6 +478,8 @@ function createMacroGrid() {
                 macroAssignments[i].value = newValue;
                 synth.setMacroValue(i, newValue, macroAssignments[i]);
                 updateKnobVisual(knob, newValue);
+                // Also update seq mode knob if exists
+                syncMacroKnob(i, newValue);
             }
         };
 
@@ -567,7 +569,7 @@ function createScaleSelector() {
         });
     }
 
-    // Envelope sliders
+    // Envelope sliders (sync to sequencer view)
     const envAttack = document.getElementById('env-attack');
     const envDecay = document.getElementById('env-decay');
     const envRow = document.getElementById('env-row');
@@ -577,6 +579,9 @@ function createScaleSelector() {
             // Map 0-100 to 0.001-0.5 seconds (attack should be quick)
             const attack = 0.001 + (e.target.value / 100) * 0.499;
             synth.setEnvelopeAttack(attack);
+            // Sync to seq mode slider
+            const seqEnvAttack = document.getElementById('seq-env-attack');
+            if (seqEnvAttack) seqEnvAttack.value = e.target.value;
         });
     }
 
@@ -585,27 +590,16 @@ function createScaleSelector() {
             // Map 0-100 to 0.05-3 seconds
             const decay = 0.05 + (e.target.value / 100) * 2.95;
             synth.setEnvelopeDecay(decay);
+            // Sync to seq mode slider
+            const seqEnvDecay = document.getElementById('seq-env-decay');
+            if (seqEnvDecay) seqEnvDecay.value = e.target.value;
         });
     }
 }
 
-// Toggle AD envelope mode
+// Toggle AD envelope mode (also syncs sequencer view)
 function toggleEnvelope() {
-    envelopeEnabled = !envelopeEnabled;
-    synth.setEnvelopeEnabled(envelopeEnabled);
-
-    const envToggle = document.getElementById('env-toggle');
-    const envRow = document.getElementById('env-row');
-
-    if (envToggle) {
-        envToggle.classList.toggle('active', envelopeEnabled);
-        // ◇ = drone/hold mode, ◆ = envelope mode
-        envToggle.textContent = envelopeEnabled ? '◆' : '◇';
-    }
-
-    if (envRow) {
-        envRow.classList.toggle('active', envelopeEnabled);
-    }
+    toggleEnvelopeBoth();
 }
 
 function selectRoot(index) {
@@ -743,9 +737,175 @@ function releaseAllNotes() {
 
 // Create the sequencer UI
 function createSequencerUI() {
+    createSeqMacroGrid();
     createSeqLengthSelector();
     createSeqGrid();
     setupSeqControls();
+    setupSeqEnvelopeControls();
+}
+
+// Create 16 macro knobs for sequencer (2 rows of 8)
+function createSeqMacroGrid() {
+    const macroGrid = document.getElementById('seq-macro-grid');
+    macroGrid.innerHTML = '';
+
+    // Get current assignments
+    macroAssignments = synth.getMacroAssignments();
+
+    for (let i = 0; i < 16; i++) {
+        const knob = document.createElement('div');
+        knob.className = 'macro-knob';
+        knob.dataset.index = i;
+        knob.dataset.seqKnob = 'true';
+
+        const visual = document.createElement('div');
+        visual.className = 'knob-visual';
+
+        const indicator = document.createElement('div');
+        indicator.className = 'knob-indicator';
+        visual.appendChild(indicator);
+
+        const label = document.createElement('div');
+        label.className = 'knob-label';
+
+        const assignment = macroAssignments[i];
+        if (assignment) {
+            label.textContent = assignment.label;
+            updateKnobVisual(knob, assignment.value);
+        } else {
+            label.textContent = '---';
+            updateKnobVisual(knob, 0.5);
+        }
+
+        knob.appendChild(visual);
+        knob.appendChild(label);
+
+        // Touch/drag handling for knob
+        let startY = 0;
+        let startValue = 0;
+
+        const handleStart = (e) => {
+            e.preventDefault();
+            const touch = e.touches ? e.touches[0] : e;
+            startY = touch.clientY;
+            startValue = macroAssignments[i]?.value || 0.5;
+            knob.classList.add('active');
+        };
+
+        const handleMove = (e) => {
+            if (!knob.classList.contains('active')) return;
+            e.preventDefault();
+            const touch = e.touches ? e.touches[0] : e;
+            const deltaY = startY - touch.clientY;
+            const newValue = Math.max(0, Math.min(1, startValue + deltaY / 100));
+
+            if (macroAssignments[i]) {
+                macroAssignments[i].value = newValue;
+                synth.setMacroValue(i, newValue, macroAssignments[i]);
+                updateKnobVisual(knob, newValue);
+                // Also update play mode knob if exists
+                syncMacroKnob(i, newValue);
+            }
+        };
+
+        const handleEnd = () => {
+            knob.classList.remove('active');
+        };
+
+        knob.addEventListener('touchstart', handleStart, { passive: false });
+        knob.addEventListener('touchmove', handleMove, { passive: false });
+        knob.addEventListener('touchend', handleEnd);
+        knob.addEventListener('mousedown', handleStart);
+        document.addEventListener('mousemove', handleMove);
+        document.addEventListener('mouseup', handleEnd);
+
+        macroGrid.appendChild(knob);
+    }
+}
+
+// Sync macro knob value between play mode and seq mode
+function syncMacroKnob(index, value) {
+    // Update all knobs with this index (both views)
+    const allKnobs = document.querySelectorAll(`.macro-knob[data-index="${index}"]`);
+    allKnobs.forEach(knob => {
+        updateKnobVisual(knob, value);
+    });
+}
+
+// Setup sequencer envelope controls with sync to play mode
+function setupSeqEnvelopeControls() {
+    const seqEnvToggle = document.getElementById('seq-env-toggle');
+    const seqEnvAttack = document.getElementById('seq-env-attack');
+    const seqEnvDecay = document.getElementById('seq-env-decay');
+    const seqEnvRow = document.getElementById('seq-env-row');
+
+    // Sync current envelope state to seq controls
+    if (seqEnvToggle) {
+        seqEnvToggle.classList.toggle('active', envelopeEnabled);
+        seqEnvToggle.textContent = envelopeEnabled ? '◆' : '◇';
+
+        seqEnvToggle.addEventListener('click', () => toggleEnvelopeBoth());
+        seqEnvToggle.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            toggleEnvelopeBoth();
+        });
+    }
+
+    if (seqEnvRow) {
+        seqEnvRow.classList.toggle('active', envelopeEnabled);
+    }
+
+    // Sync attack/decay slider values from play mode
+    const playEnvAttack = document.getElementById('env-attack');
+    const playEnvDecay = document.getElementById('env-decay');
+
+    if (seqEnvAttack && playEnvAttack) {
+        seqEnvAttack.value = playEnvAttack.value;
+        seqEnvAttack.addEventListener('input', (e) => {
+            const attack = 0.001 + (e.target.value / 100) * 0.499;
+            synth.setEnvelopeAttack(attack);
+            // Sync to play mode slider
+            playEnvAttack.value = e.target.value;
+        });
+    }
+
+    if (seqEnvDecay && playEnvDecay) {
+        seqEnvDecay.value = playEnvDecay.value;
+        seqEnvDecay.addEventListener('input', (e) => {
+            const decay = 0.05 + (e.target.value / 100) * 2.95;
+            synth.setEnvelopeDecay(decay);
+            // Sync to play mode slider
+            playEnvDecay.value = e.target.value;
+        });
+    }
+}
+
+// Toggle envelope and sync both views
+function toggleEnvelopeBoth() {
+    envelopeEnabled = !envelopeEnabled;
+    synth.setEnvelopeEnabled(envelopeEnabled);
+
+    // Update play mode controls
+    const envToggle = document.getElementById('env-toggle');
+    const envRow = document.getElementById('env-row');
+    if (envToggle) {
+        envToggle.classList.toggle('active', envelopeEnabled);
+        envToggle.textContent = envelopeEnabled ? '◆' : '◇';
+    }
+    if (envRow) {
+        envRow.classList.toggle('active', envelopeEnabled);
+    }
+
+    // Update seq mode controls
+    const seqEnvToggle = document.getElementById('seq-env-toggle');
+    const seqEnvRow = document.getElementById('seq-env-row');
+    if (seqEnvToggle) {
+        seqEnvToggle.classList.toggle('active', envelopeEnabled);
+        seqEnvToggle.textContent = envelopeEnabled ? '◆' : '◇';
+    }
+    if (seqEnvRow) {
+        seqEnvRow.classList.toggle('active', envelopeEnabled);
+    }
 }
 
 // Create length selector (2-16 steps)

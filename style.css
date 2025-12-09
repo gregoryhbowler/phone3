@@ -111,6 +111,51 @@ html, body {
     border-color: #3a5a3a;
 }
 
+/* Sequencer macro knobs grid */
+#seq-macro-grid {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+    gap: 3px;
+    padding: 4px;
+    flex: 0 0 auto;
+    height: 20%;
+    min-height: 60px;
+    max-height: 100px;
+    background: #0f0f0f;
+    margin-bottom: 4px;
+    border-radius: 4px;
+}
+
+/* Sequencer envelope row */
+#seq-env-row {
+    display: flex;
+    align-items: center;
+    padding: 4px 8px;
+    gap: 8px;
+    border-top: 1px solid #151515;
+}
+
+#seq-env-row.active .env-label {
+    color: #aa8;
+}
+
+#seq-env-row.active .env-slider::-webkit-slider-runnable-track {
+    background: #3a3a2a;
+}
+
+#seq-env-row.active .env-slider::-webkit-slider-thumb {
+    background: #8a8a5a;
+}
+
+#seq-env-row.active .env-slider::-moz-range-track {
+    background: #3a3a2a;
+}
+
+#seq-env-row.active .env-slider::-moz-range-thumb {
+    background: #8a8a5a;
+}
+
 /* Sequencer controls row */
 #seq-controls {
     flex-shrink: 0;
