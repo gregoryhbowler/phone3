@@ -1254,23 +1254,13 @@ function createTransposeSeqUI() {
     if (toggleBtn) {
         toggleBtn.classList.toggle('active', transposeSeqEnabled);
         toggleBtn.textContent = transposeSeqEnabled ? '◆' : '◇';
-
         toggleBtn.addEventListener('click', toggleTransposeSeq);
-        toggleBtn.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            toggleTransposeSeq();
-        }, { passive: false });
     }
 
     // Setup random button
     if (randomBtn) {
         randomBtn.classList.toggle('active', transposeSeqRandom);
-
         randomBtn.addEventListener('click', toggleTransposeSeqRandom);
-        randomBtn.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            toggleTransposeSeqRandom();
-        }, { passive: false });
     }
 
     // Create 8 transpose cells
@@ -1294,10 +1284,6 @@ function createTransposeCell(index) {
     enableBtn.className = 'transpose-cell-enable' + (cellData.enabled ? ' active' : '');
     enableBtn.textContent = index + 1;
     enableBtn.addEventListener('click', () => toggleTransposeCell(index));
-    enableBtn.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        toggleTransposeCell(index);
-    }, { passive: false });
 
     // Transpose knob (middle)
     const knob = document.createElement('div');
@@ -1354,10 +1340,6 @@ function createTransposeCell(index) {
     cycleDown.className = 'transpose-cycle-btn';
     cycleDown.textContent = '−';
     cycleDown.addEventListener('click', () => adjustTransposeCycle(index, -1));
-    cycleDown.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        adjustTransposeCycle(index, -1);
-    }, { passive: false });
 
     const cycleValue = document.createElement('span');
     cycleValue.className = 'transpose-cycle-value';
@@ -1367,10 +1349,6 @@ function createTransposeCell(index) {
     cycleUp.className = 'transpose-cycle-btn';
     cycleUp.textContent = '+';
     cycleUp.addEventListener('click', () => adjustTransposeCycle(index, 1));
-    cycleUp.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        adjustTransposeCycle(index, 1);
-    }, { passive: false });
 
     cycleContainer.appendChild(cycleDown);
     cycleContainer.appendChild(cycleValue);
@@ -1566,19 +1544,11 @@ function createLfoCell(index) {
     enableBtn.className = 'lfo-enable' + (lfo.enabled ? ' active' : '');
     enableBtn.textContent = index + 1;
     enableBtn.addEventListener('click', () => toggleLfo(index));
-    enableBtn.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        toggleLfo(index);
-    }, { passive: false });
 
     const shapeBtn = document.createElement('button');
     shapeBtn.className = 'lfo-shape';
     shapeBtn.textContent = LFO_SHAPES[lfo.shape];
     shapeBtn.addEventListener('click', () => cycleLfoShape(index));
-    shapeBtn.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        cycleLfoShape(index);
-    }, { passive: false });
 
     headerRow.appendChild(enableBtn);
     headerRow.appendChild(shapeBtn);
@@ -1649,10 +1619,6 @@ function createLfoCell(index) {
     destPrev.className = 'lfo-dest-prev';
     destPrev.textContent = '◂';
     destPrev.addEventListener('click', () => changeLfoDest(index, -1));
-    destPrev.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        changeLfoDest(index, -1);
-    }, { passive: false });
 
     const destDisplay = document.createElement('div');
     destDisplay.className = 'lfo-dest';
@@ -1662,10 +1628,6 @@ function createLfoCell(index) {
     destNext.className = 'lfo-dest-next';
     destNext.textContent = '▸';
     destNext.addEventListener('click', () => changeLfoDest(index, 1));
-    destNext.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        changeLfoDest(index, 1);
-    }, { passive: false });
 
     destRow.appendChild(destPrev);
     destRow.appendChild(destDisplay);
