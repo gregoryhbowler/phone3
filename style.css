@@ -416,6 +416,7 @@ html, body {
     display: flex;
     align-items: center;
     justify-content: center;
+    touch-action: manipulation;
 }
 
 .seq-btn:active {
@@ -462,6 +463,7 @@ html, body {
     align-items: center;
     justify-content: center;
     transition: all 0.15s ease;
+    touch-action: manipulation;
 }
 
 .transpose-seq-btn:active {
@@ -521,6 +523,7 @@ html, body {
     display: flex;
     align-items: center;
     justify-content: center;
+    touch-action: manipulation;
 }
 
 .transpose-cell-enable.active {
@@ -588,6 +591,7 @@ html, body {
     display: flex;
     align-items: center;
     justify-content: center;
+    touch-action: manipulation;
 }
 
 .transpose-cycle-btn:active {
@@ -671,6 +675,7 @@ html, body {
     display: flex;
     align-items: center;
     justify-content: center;
+    touch-action: manipulation;
 }
 
 .lfo-enable.active {
@@ -693,6 +698,7 @@ html, body {
     align-items: center;
     justify-content: center;
     text-transform: uppercase;
+    touch-action: manipulation;
 }
 
 .lfo-cell.active .lfo-shape {
@@ -839,6 +845,7 @@ html, body {
     display: flex;
     align-items: center;
     justify-content: center;
+    touch-action: manipulation;
 }
 
 .lfo-dest-prev:active,

@@ -519,15 +519,15 @@ function createMacroGrid() {
             knob.removeEventListener('pointercancel', handlePointerUp);
         };
 
+        // Use passive listener so browser can scroll immediately
         knob.addEventListener('pointerdown', (e) => {
             startY = e.clientY;
             startValue = macroAssignments[i]?.value || 0.5;
             dragging = false;
-            // Don't capture yet - let browser handle scroll
             knob.addEventListener('pointermove', handlePointerMove);
             knob.addEventListener('pointerup', handlePointerUp);
             knob.addEventListener('pointercancel', handlePointerUp);
-        });
+        }, { passive: true });
 
         macroGrid.appendChild(knob);
     }
@@ -853,15 +853,15 @@ function createSeqMacroGrid() {
             knob.removeEventListener('pointercancel', handlePointerUp);
         };
 
+        // Use passive listener so browser can scroll immediately
         knob.addEventListener('pointerdown', (e) => {
             startY = e.clientY;
             startValue = macroAssignments[i]?.value || 0.5;
             dragging = false;
-            // Don't capture yet - let browser handle scroll
             knob.addEventListener('pointermove', handlePointerMove);
             knob.addEventListener('pointerup', handlePointerUp);
             knob.addEventListener('pointercancel', handlePointerUp);
-        });
+        }, { passive: true });
 
         macroGrid.appendChild(knob);
     }
@@ -1037,15 +1037,15 @@ function createSeqGrid() {
             knob.removeEventListener('pointercancel', handlePointerUp);
         };
 
+        // Use passive listener so browser can scroll immediately
         knob.addEventListener('pointerdown', (e) => {
             startY = e.clientY;
             startValue = seqNotes[i];
             dragging = false;
-            // Don't capture yet - let browser handle scroll
             knob.addEventListener('pointermove', handlePointerMove);
             knob.addEventListener('pointerup', handlePointerUp);
             knob.addEventListener('pointercancel', handlePointerUp);
-        });
+        }, { passive: true });
 
         knobsContainer.appendChild(knob);
 
@@ -1326,15 +1326,15 @@ function createTransposeCell(index) {
         knob.removeEventListener('pointercancel', handlePointerUp);
     };
 
+    // Use passive listener so browser can scroll immediately
     knob.addEventListener('pointerdown', (e) => {
         startY = e.clientY;
         startValue = cellData.transpose;
         dragging = false;
-        // Don't capture yet - let browser handle scroll
         knob.addEventListener('pointermove', handlePointerMove);
         knob.addEventListener('pointerup', handlePointerUp);
         knob.addEventListener('pointercancel', handlePointerUp);
-    });
+    }, { passive: true });
 
     // Transpose value display
     const valueLabel = document.createElement('div');
