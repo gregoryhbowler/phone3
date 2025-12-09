@@ -741,7 +741,7 @@ html, body {
     appearance: none;
     background: transparent;
     outline: none;
-    touch-action: pan-x;
+    touch-action: manipulation;
 }
 
 .lfo-slider::-webkit-slider-runnable-track {
