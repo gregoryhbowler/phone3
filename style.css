@@ -100,6 +100,7 @@ html, body {
     min-height: 0;
     background: #0a0a0a;
     padding: 4px;
+    overflow-x: hidden;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
 }
@@ -116,13 +117,12 @@ html, body {
 /* Sequencer macro knobs grid */
 #seq-macro-grid {
     display: grid;
-    grid-template-columns: repeat(8, 1fr);
-    grid-template-rows: repeat(2, 1fr);
-    gap: 3px;
-    padding: 4px;
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: repeat(4, 1fr);
+    gap: 4px;
+    padding: 6px;
     flex: 0 0 auto;
-    height: 80px;
-    min-height: 60px;
+    min-height: 140px;
     background: #0f0f0f;
     margin-bottom: 4px;
     border-radius: 4px;
@@ -172,20 +172,19 @@ html, body {
     padding: 4px 8px;
     gap: 4px;
     border-bottom: 1px solid #151515;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    touch-action: pan-x;
 }
 
 #seq-length-selector {
     display: flex;
     gap: 2px;
     flex: 1;
+    justify-content: space-between;
 }
 
 .seq-len-btn {
-    width: 24px;
-    height: 24px;
+    flex: 1;
+    min-width: 0;
+    height: 28px;
     background: #1a1a1a;
     border: 1px solid #2a2a2a;
     border-radius: 3px;
@@ -196,7 +195,6 @@ html, body {
     display: flex;
     align-items: center;
     justify-content: center;
-    flex-shrink: 0;
 }
 
 .seq-len-btn.active {
@@ -276,27 +274,24 @@ html, body {
     flex: 0 0 auto;
     display: flex;
     flex-direction: column;
-    min-height: 100px;
-    max-height: 140px;
     background: #0f0f0f;
     border: 1px solid #1a1a1a;
     border-radius: 4px;
     padding: 4px;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+    overflow: hidden;
 }
 
 #seq-knobs {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
     gap: 4px;
     padding-bottom: 4px;
-    min-height: 80px;
 }
 
 #seq-steps {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
     gap: 4px;
-    min-height: 40px;
 }
 
 .seq-step-col {
@@ -304,13 +299,11 @@ html, body {
     flex-direction: column;
     align-items: center;
     gap: 4px;
-    min-width: 36px;
-    flex-shrink: 0;
 }
 
 .seq-knob {
-    width: 36px;
-    height: 60px;
+    width: 100%;
+    aspect-ratio: 1 / 1.4;
     background: #1a1a1a;
     border: 1px solid #2a2a2a;
     border-radius: 4px;
@@ -365,8 +358,8 @@ html, body {
 }
 
 .seq-step-btn {
-    width: 36px;
-    height: 32px;
+    width: 100%;
+    aspect-ratio: 1.2 / 1;
     background: #1a1a1a;
     border: 1px solid #2a2a2a;
     border-radius: 4px;
@@ -447,14 +440,14 @@ html, body {
 }
 
 .transpose-seq-btn {
-    width: 28px;
-    height: 24px;
+    width: 36px;
+    height: 28px;
     background: #1a1a1a;
     border: 1px solid #2a2a2a;
     border-radius: 3px;
     color: #555;
     font-family: 'Courier New', monospace;
-    font-size: 12px;
+    font-size: 14px;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -479,10 +472,10 @@ html, body {
 }
 
 #transpose-seq-cells {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: repeat(2, 1fr);
     gap: 4px;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
     padding: 4px 0;
 }
 
@@ -490,13 +483,11 @@ html, body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 4px;
-    min-width: 40px;
-    flex-shrink: 0;
+    gap: 6px;
     background: #1a1a1a;
     border: 1px solid #2a2a2a;
     border-radius: 4px;
-    padding: 4px;
+    padding: 8px 4px;
 }
 
 .transpose-cell.active {
@@ -510,8 +501,8 @@ html, body {
 }
 
 .transpose-cell-enable {
-    width: 24px;
-    height: 18px;
+    width: 100%;
+    height: 24px;
     background: #252525;
     border: 1px solid #3a3a3a;
     border-radius: 3px;
@@ -530,8 +521,8 @@ html, body {
 }
 
 .transpose-cell-knob {
-    width: 32px;
-    height: 32px;
+    width: 40px;
+    height: 40px;
     background: #252525;
     border: 1px solid #3a3a3a;
     border-radius: 50%;
@@ -542,10 +533,10 @@ html, body {
 .transpose-cell-indicator {
     position: absolute;
     width: 2px;
-    height: 10px;
+    height: 12px;
     background: #666;
     left: 50%;
-    top: 4px;
+    top: 6px;
     transform-origin: bottom center;
     transform: translateX(-50%);
 }
@@ -572,13 +563,13 @@ html, body {
 }
 
 .transpose-cycle-btn {
-    width: 16px;
-    height: 16px;
+    width: 22px;
+    height: 22px;
     background: #252525;
     border: 1px solid #3a3a3a;
-    border-radius: 2px;
+    border-radius: 3px;
     color: #555;
-    font-size: 8px;
+    font-size: 10px;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -623,19 +614,19 @@ html, body {
 #lfo-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    grid-template-rows: repeat(2, 1fr);
-    gap: 4px;
+    grid-template-rows: repeat(2, auto);
+    gap: 6px;
     padding: 4px 0;
 }
 
 .lfo-cell {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 6px;
     background: #1a1a1a;
     border: 1px solid #2a2a2a;
     border-radius: 4px;
-    padding: 6px;
+    padding: 8px;
 }
 
 .lfo-cell.active {
@@ -651,13 +642,13 @@ html, body {
 }
 
 .lfo-enable {
-    width: 24px;
-    height: 18px;
+    width: 28px;
+    height: 24px;
     background: #252525;
     border: 1px solid #3a3a3a;
     border-radius: 3px;
     color: #444;
-    font-size: 9px;
+    font-size: 10px;
     font-family: 'Courier New', monospace;
     cursor: pointer;
     display: flex;
@@ -673,12 +664,12 @@ html, body {
 
 .lfo-shape {
     flex: 1;
-    height: 18px;
+    height: 24px;
     background: #252525;
     border: 1px solid #3a3a3a;
     border-radius: 3px;
     color: #555;
-    font-size: 8px;
+    font-size: 9px;
     font-family: 'Courier New', monospace;
     cursor: pointer;
     display: flex;
@@ -693,9 +684,9 @@ html, body {
 }
 
 .lfo-visual {
-    height: 20px;
+    height: 28px;
     background: #151515;
-    border-radius: 2px;
+    border-radius: 3px;
     position: relative;
     overflow: hidden;
 }
@@ -743,7 +734,7 @@ html, body {
 
 .lfo-slider {
     flex: 1;
-    height: 16px;
+    height: 24px;
     -webkit-appearance: none;
     appearance: none;
     background: transparent;
@@ -760,12 +751,12 @@ html, body {
 .lfo-slider::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
-    width: 12px;
-    height: 12px;
+    width: 18px;
+    height: 18px;
     background: #4a5a5a;
     border-radius: 50%;
     cursor: pointer;
-    margin-top: -4px;
+    margin-top: -7px;
 }
 
 .lfo-cell.active .lfo-slider::-webkit-slider-thumb {
@@ -779,8 +770,8 @@ html, body {
 }
 
 .lfo-slider::-moz-range-thumb {
-    width: 12px;
-    height: 12px;
+    width: 18px;
+    height: 18px;
     background: #4a5a5a;
     border-radius: 50%;
     cursor: pointer;
@@ -799,12 +790,12 @@ html, body {
 
 .lfo-dest {
     flex: 1;
-    height: 18px;
+    height: 24px;
     background: #252525;
     border: 1px solid #3a3a3a;
     border-radius: 3px;
     color: #555;
-    font-size: 7px;
+    font-size: 8px;
     font-family: 'Courier New', monospace;
     cursor: pointer;
     display: flex;
@@ -820,13 +811,13 @@ html, body {
 
 .lfo-dest-prev,
 .lfo-dest-next {
-    width: 16px;
-    height: 18px;
+    width: 24px;
+    height: 24px;
     background: #252525;
     border: 1px solid #3a3a3a;
-    border-radius: 2px;
+    border-radius: 3px;
     color: #555;
-    font-size: 10px;
+    font-size: 12px;
     cursor: pointer;
     display: flex;
     align-items: center;
