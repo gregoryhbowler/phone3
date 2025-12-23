@@ -795,6 +795,198 @@ class PhasingOscillatorProcessor extends AudioWorkletProcessor {
     }
 }
 
+// ==========================================
+// PITCH QUANTIZER (Scale-aware V/Oct quantization)
+// ==========================================
+// Takes any frequency input and quantizes it to the nearest
+// scale degree based on root note and current scale ratios.
+// The scale is communicated via message port as an array of ratios.
+class PitchQuantizerProcessor extends AudioWorkletProcessor {
+    static get parameterDescriptors() {
+        return [
+            { name: 'root', defaultValue: 55, minValue: 20, maxValue: 880, automationRate: 'k-rate' },
+            { name: 'glide', defaultValue: 0.005, minValue: 0, maxValue: 0.1, automationRate: 'k-rate' },
+            { name: 'bypass', defaultValue: 0, minValue: 0, maxValue: 1, automationRate: 'k-rate' }
+        ];
+    }
+
+    constructor() {
+        super();
+        // Default to major scale ratios
+        this.scaleRatios = [1, 1.122462, 1.259921, 1.334840, 1.498307, 1.681793, 1.887749];
+        this.currentFreq = 55;
+        this.targetFreq = 55;
+
+        // Listen for scale updates from main thread
+        this.port.onmessage = (event) => {
+            if (event.data.type === 'setScale' && Array.isArray(event.data.ratios)) {
+                this.scaleRatios = event.data.ratios;
+            }
+        };
+    }
+
+    // Find the nearest scale degree frequency to the input frequency
+    quantizeFrequency(inputFreq, rootFreq) {
+        if (inputFreq <= 0 || !isFinite(inputFreq)) return rootFreq;
+
+        // Find how many octaves above the root
+        const ratio = inputFreq / rootFreq;
+        if (ratio <= 0) return rootFreq;
+
+        // Get octave and position within octave
+        const octave = Math.floor(Math.log2(ratio));
+        const octaveMultiplier = Math.pow(2, octave);
+        const positionInOctave = ratio / octaveMultiplier; // 1.0 to 2.0
+
+        // Find nearest scale degree
+        let closestRatio = 1;
+        let minDistance = Infinity;
+
+        // Check current octave's degrees
+        for (const scaleRatio of this.scaleRatios) {
+            const distance = Math.abs(Math.log2(positionInOctave) - Math.log2(scaleRatio));
+            if (distance < minDistance) {
+                minDistance = distance;
+                closestRatio = scaleRatio;
+            }
+        }
+
+        // Also check the octave above (first degree = 2.0)
+        const octaveUpDistance = Math.abs(Math.log2(positionInOctave) - Math.log2(2));
+        if (octaveUpDistance < minDistance) {
+            closestRatio = 2;
+        }
+
+        // Also check octave below (last degree of previous octave)
+        if (this.scaleRatios.length > 0) {
+            const lastRatio = this.scaleRatios[this.scaleRatios.length - 1];
+            const octaveDownDistance = Math.abs(Math.log2(positionInOctave) - Math.log2(lastRatio / 2));
+            if (octaveDownDistance < minDistance && positionInOctave < 1.1) {
+                closestRatio = lastRatio / 2;
+            }
+        }
+
+        return rootFreq * octaveMultiplier * closestRatio;
+    }
+
+    process(inputs, outputs, parameters) {
+        const input = inputs[0];
+        const output = outputs[0];
+        const rootFreq = parameters.root[0];
+        const glide = parameters.glide[0];
+        const bypass = parameters.bypass[0] > 0.5;
+
+        // Calculate glide coefficient
+        const glideCoeff = glide > 0 ? 1 - Math.exp(-1 / (glide * sampleRate)) : 1;
+
+        for (let channel = 0; channel < output.length; channel++) {
+            const inp = input.length > 0 && input[channel] ? input[channel] : null;
+            const out = output[channel];
+
+            for (let i = 0; i < out.length; i++) {
+                // Get input frequency (could be from CV or direct value)
+                const inputFreq = inp ? inp[i] : rootFreq;
+
+                if (bypass) {
+                    // Pass through unchanged
+                    out[i] = inputFreq;
+                } else {
+                    // Quantize to nearest scale degree
+                    this.targetFreq = this.quantizeFrequency(inputFreq, rootFreq);
+
+                    // Apply glide/portamento
+                    if (glide > 0) {
+                        this.currentFreq += (this.targetFreq - this.currentFreq) * glideCoeff;
+                    } else {
+                        this.currentFreq = this.targetFreq;
+                    }
+
+                    out[i] = this.currentFreq;
+                }
+            }
+        }
+
+        return true;
+    }
+}
+
+// ==========================================
+// CV TO FREQUENCY CONVERTER (V/Oct standard)
+// ==========================================
+// Converts control voltage (-5V to +5V normalized as -1 to +1)
+// to frequency based on V/Oct standard (1V = octave)
+class CVToFreqProcessor extends AudioWorkletProcessor {
+    static get parameterDescriptors() {
+        return [
+            { name: 'root', defaultValue: 55, minValue: 20, maxValue: 880, automationRate: 'k-rate' },
+            { name: 'octaveRange', defaultValue: 5, minValue: 1, maxValue: 10, automationRate: 'k-rate' }
+        ];
+    }
+
+    process(inputs, outputs, parameters) {
+        const input = inputs[0];
+        const output = outputs[0];
+        const rootFreq = parameters.root[0];
+        const octaveRange = parameters.octaveRange[0];
+
+        for (let channel = 0; channel < output.length; channel++) {
+            const inp = input.length > 0 && input[channel] ? input[channel] : null;
+            const out = output[channel];
+
+            for (let i = 0; i < out.length; i++) {
+                // CV is normalized -1 to +1
+                const cv = inp ? inp[i] : 0;
+
+                // Convert to frequency: 0V (cv=0) = root, +1V (cv=0.2 if 5 octave range) = octave up
+                // CV of 1 = full range (e.g., 5 octaves if octaveRange=5)
+                const octaves = cv * octaveRange;
+                const freq = rootFreq * Math.pow(2, octaves);
+
+                out[i] = freq;
+            }
+        }
+
+        return true;
+    }
+}
+
+// ==========================================
+// FREQUENCY TO CV CONVERTER
+// ==========================================
+// Converts frequency back to normalized CV for modulation routing
+class FreqToCVProcessor extends AudioWorkletProcessor {
+    static get parameterDescriptors() {
+        return [
+            { name: 'root', defaultValue: 55, minValue: 20, maxValue: 880, automationRate: 'k-rate' },
+            { name: 'octaveRange', defaultValue: 5, minValue: 1, maxValue: 10, automationRate: 'k-rate' }
+        ];
+    }
+
+    process(inputs, outputs, parameters) {
+        const input = inputs[0];
+        const output = outputs[0];
+        const rootFreq = parameters.root[0];
+        const octaveRange = parameters.octaveRange[0];
+
+        for (let channel = 0; channel < output.length; channel++) {
+            const inp = input.length > 0 && input[channel] ? input[channel] : null;
+            const out = output[channel];
+
+            for (let i = 0; i < out.length; i++) {
+                const freq = inp ? inp[i] : rootFreq;
+
+                // Convert frequency to CV
+                const octaves = Math.log2(freq / rootFreq);
+                const cv = octaves / octaveRange;
+
+                out[i] = Math.max(-1, Math.min(1, cv)); // Clamp to -1 to +1
+            }
+        }
+
+        return true;
+    }
+}
+
 // Register all processors
 registerProcessor('complex-oscillator', ComplexOscillatorProcessor);
 registerProcessor('rungler', RunglerProcessor);
@@ -809,3 +1001,6 @@ registerProcessor('wave-terrain', WaveTerrainProcessor);
 registerProcessor('tape-loop', TapeLoopProcessor);
 registerProcessor('spectral-drone', SpectralDroneProcessor);
 registerProcessor('phasing-oscillator', PhasingOscillatorProcessor);
+registerProcessor('pitch-quantizer', PitchQuantizerProcessor);
+registerProcessor('cv-to-freq', CVToFreqProcessor);
+registerProcessor('freq-to-cv', FreqToCVProcessor);

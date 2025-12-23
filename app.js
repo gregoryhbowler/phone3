@@ -109,8 +109,8 @@ function cycleScale() {
     const scaleBtn = document.getElementById('scale-btn');
     scaleBtn.textContent = SCALE_DISPLAY[scaleName];
 
-    // Update synth scale
-    synth.currentScale = scaleName;
+    // Update synth scale (also updates pitch quantizer)
+    synth.setScale(scaleName);
 
     // Visual feedback
     scaleBtn.classList.add('active');

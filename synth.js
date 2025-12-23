@@ -180,9 +180,18 @@ class PatchUnknown {
         try {
             await this.ctx.audioWorklet.addModule('worklets/processors.js');
             this.workletReady = true;
+
+            // Create pitch quantizer worklet node
+            this.pitchQuantizer = new AudioWorkletNode(this.ctx, 'pitch-quantizer');
+            this.pitchQuantizer.parameters.get('root').value = this.rootNote;
+            this.pitchQuantizer.parameters.get('glide').value = 0.005;
+
+            // Send initial scale ratios to the quantizer
+            this.updateQuantizerScale();
         } catch (e) {
             console.log('Worklets not available, using fallback');
             this.workletReady = false;
+            this.pitchQuantizer = null;
         }
 
         // Store reverb send for later access
@@ -1020,7 +1029,7 @@ class PatchUnknown {
         // More likely to shift toward melodic/harmonic scales
         if (Math.random() < nudgeAmount * 1.5) {
             const melodicScales = ['harmonic', 'dreamHouse', 'pentatonic', 'fifths'];
-            this.currentScale = melodicScales[Math.floor(Math.random() * melodicScales.length)];
+            this.setScale(melodicScales[Math.floor(Math.random() * melodicScales.length)]);
         }
 
         // Nudge oscillators toward arpeggio-like behavior
@@ -1160,7 +1169,7 @@ class PatchUnknown {
     evolve() {
         // Shift to more consonant scale
         const consonantScales = ['dreamHouse', 'drone', 'pentatonic', 'fifths'];
-        this.currentScale = consonantScales[Math.floor(Math.random() * consonantScales.length)];
+        this.setScale(consonantScales[Math.floor(Math.random() * consonantScales.length)]);
 
         // Increase Krell calmness
         this.krellEventRate = Math.min(15000, this.krellEventRate * 1.3);
@@ -1245,6 +1254,9 @@ class PatchUnknown {
         // Random root in low register (27.5 to 110 Hz)
         this.rootNote = 27.5 * Math.pow(2, Math.random() * 2);
 
+        // Update quantizer with new scale and root
+        this.updateQuantizerScale();
+
         // Reset Krell parameters
         this.krellEventRate = 4000 + Math.random() * 8000;
         this.krellDensity = 0.2 + Math.random() * 0.3;
@@ -1264,6 +1276,9 @@ class PatchUnknown {
 
         // Root in melodic register (65-165 Hz - C2 to E3 range, good for arpeggios)
         this.rootNote = 65 * Math.pow(2, Math.random() * 1.35);
+
+        // Update quantizer with new scale and root
+        this.updateQuantizerScale();
 
         // Very slow, deliberate Krell - let melodies breathe (Pärt-like stillness)
         this.krellEventRate = 10000 + Math.random() * 10000; // 10-20 seconds between events
@@ -1349,6 +1364,9 @@ class PatchUnknown {
 
         // Very deep root for drones (27.5-45 Hz - A0 to F#1)
         this.rootNote = 27.5 * Math.pow(2, Math.random() * 0.7);
+
+        // Update quantizer with new scale and root
+        this.updateQuantizerScale();
 
         // Extremely slow Krell - glacial Radigue-style evolution
         this.krellEventRate = 20000 + Math.random() * 20000; // 20-40 seconds between events
@@ -1453,6 +1471,9 @@ class PatchUnknown {
 
         // Mid-range root for punchy bass (40-80 Hz)
         this.rootNote = 40 * Math.pow(2, Math.random());
+
+        // Update quantizer with new scale and root
+        this.updateQuantizerScale();
 
         // Fast, dense Krell - lots of rhythmic activity
         this.krellEventRate = 1500 + Math.random() * 2500; // 1.5-4 seconds between events
@@ -2003,12 +2024,15 @@ class PatchUnknown {
         }
     }
 
-    // Set scale and optionally quantize
+    // Set scale and optionally quantize oscillators
     setScale(scaleName, rootSemitones = null, quantize = true) {
         if (this.scales[scaleName]) {
             this.currentScale = scaleName;
             const scale = this.scales[scaleName];
             const root = rootSemitones !== null ? rootSemitones : (this.currentRoot || 0);
+
+            // Update pitch quantizer worklet
+            this.updateQuantizerScale();
 
             if (quantize) {
                 this.quantizeOscillators(scale, root);
@@ -2932,7 +2956,7 @@ class PatchUnknown {
 
         // Always shift toward harmonic-friendly scales
         const harmonicScales = ['major', 'harmonic', 'dreamHouse', 'dorian'];
-        this.currentScale = harmonicScales[Math.floor(Math.random() * harmonicScales.length)];
+        this.setScale(harmonicScales[Math.floor(Math.random() * harmonicScales.length)]);
 
         // Reduce cell-based sounds, boost phrase sounds
         this.fadeDownCellVoices();
@@ -3109,6 +3133,9 @@ class PatchUnknown {
         const cFreq = 55 * Math.pow(2, 3/12); // C2 ~65.4 Hz
         this.rootNote = cFreq * Math.pow(2, semitones / 12);
         this.currentRoot = semitones;
+
+        // Update quantizer with new root
+        this.updateQuantizerScale();
     }
 
     // Toggle a cell and return new state
@@ -3120,6 +3147,80 @@ class PatchUnknown {
             this.activateCell(index);
             return true;
         }
+    }
+
+    // ============== PITCH QUANTIZER SYSTEM ==============
+
+    // Update the pitch quantizer worklet with current scale ratios
+    updateQuantizerScale() {
+        if (this.pitchQuantizer && this.scales[this.currentScale]) {
+            const ratios = this.scales[this.currentScale];
+            this.pitchQuantizer.port.postMessage({
+                type: 'setScale',
+                ratios: ratios
+            });
+            // Also update root note
+            this.pitchQuantizer.parameters.get('root').value = this.rootNote;
+        }
+    }
+
+    // Quantize any frequency to the nearest scale degree
+    // This is a CPU-side quantization for direct frequency assignments
+    quantizeFrequency(inputFreq) {
+        const scale = this.scales[this.currentScale] || this.scales.major;
+        const rootFreq = this.rootNote;
+
+        if (inputFreq <= 0 || !isFinite(inputFreq)) return rootFreq;
+
+        // Find how many octaves above the root
+        const ratio = inputFreq / rootFreq;
+        if (ratio <= 0) return rootFreq;
+
+        // Get octave and position within octave
+        const octave = Math.floor(Math.log2(ratio));
+        const octaveMultiplier = Math.pow(2, octave);
+        const positionInOctave = ratio / octaveMultiplier; // 1.0 to 2.0
+
+        // Find nearest scale degree
+        let closestRatio = 1;
+        let minDistance = Infinity;
+
+        // Check current octave's degrees
+        for (const scaleRatio of scale) {
+            const distance = Math.abs(Math.log2(positionInOctave) - Math.log2(scaleRatio));
+            if (distance < minDistance) {
+                minDistance = distance;
+                closestRatio = scaleRatio;
+            }
+        }
+
+        // Also check the octave above (first degree = 2.0)
+        const octaveUpDistance = Math.abs(Math.log2(positionInOctave) - Math.log2(2));
+        if (octaveUpDistance < minDistance) {
+            closestRatio = 2;
+        }
+
+        // Also check octave below (last degree of previous octave)
+        if (scale.length > 0) {
+            const lastRatio = scale[scale.length - 1];
+            const octaveDownDistance = Math.abs(Math.log2(positionInOctave) - Math.log2(lastRatio / 2));
+            if (octaveDownDistance < minDistance && positionInOctave < 1.1) {
+                closestRatio = lastRatio / 2;
+            }
+        }
+
+        return rootFreq * octaveMultiplier * closestRatio;
+    }
+
+    // Quantize frequency and set it on an oscillator or AudioParam
+    setQuantizedFrequency(param, freq, timeConstant = 0.003) {
+        const quantizedFreq = this.quantizeFrequency(freq);
+        if (param.setTargetAtTime) {
+            param.setTargetAtTime(quantizedFreq, this.ctx.currentTime, timeConstant);
+        } else {
+            param.value = quantizedFreq;
+        }
+        return quantizedFreq;
     }
 }
 
