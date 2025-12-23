@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>▣ PATCH UNKNOWN ▣</title>
+    <title>MOTIF UNKNOWN</title>
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.json">
     <link rel="apple-touch-icon" href="icon.svg">
@@ -14,83 +14,19 @@
 <body>
     <div id="app">
         <header id="header">
-            <button id="seq-toggle" class="header-btn" aria-label="Step sequencer">▤</button>
-            <button id="mode-toggle" class="header-btn" aria-label="Toggle play mode">▦</button>
+            <button id="root-btn" class="header-btn" aria-label="Root note">C</button>
+            <button id="scale-btn" class="header-btn" aria-label="Scale">MAJ</button>
+            <button id="tint-btn" class="header-btn" aria-label="Tintinnabuli">T</button>
             <button id="record-btn" class="header-btn" aria-label="Record">○</button>
         </header>
         <div id="patch-mode">
             <div id="grid"></div>
         </div>
-        <div id="seq-mode" class="hidden">
-            <div id="seq-macro-grid"></div>
-            <div id="seq-controls">
-                <div id="seq-length-row">
-                    <span class="seq-label">LEN</span>
-                    <div id="seq-length-selector"></div>
-                </div>
-                <div id="seq-param-row">
-                    <span class="seq-label">BPM</span>
-                    <input type="range" id="seq-tempo" class="seq-slider" min="20" max="240" value="120">
-                    <span id="seq-tempo-value" class="seq-value">120</span>
-                    <span class="seq-label">TRN</span>
-                    <input type="range" id="seq-transpose" class="seq-slider" min="-12" max="12" value="0">
-                    <span id="seq-transpose-value" class="seq-value">0</span>
-                </div>
-                <div id="seq-env-row">
-                    <button id="seq-env-toggle" class="env-btn" aria-label="Toggle envelope">◇</button>
-                    <span class="env-label">ATK</span>
-                    <input type="range" id="seq-env-attack" class="env-slider" min="0" max="100" value="1">
-                    <span class="env-label">DCY</span>
-                    <input type="range" id="seq-env-decay" class="env-slider" min="0" max="100" value="50">
-                </div>
-            </div>
-            <div id="seq-grid">
-                <div id="seq-knobs"></div>
-                <div id="seq-steps"></div>
-            </div>
-            <div id="seq-transport">
-                <button id="seq-play" class="seq-btn">▶</button>
-                <button id="seq-stop" class="seq-btn">■</button>
-            </div>
-            <div id="transpose-seq">
-                <div id="transpose-seq-header">
-                    <span class="seq-label">TRN SEQ</span>
-                    <button id="transpose-seq-toggle" class="transpose-seq-btn" aria-label="Toggle transpose sequencer">◇</button>
-                    <button id="transpose-seq-random" class="transpose-seq-btn" aria-label="Random mode">⚄</button>
-                </div>
-                <div id="transpose-seq-cells"></div>
-            </div>
-            <div id="lfo-section">
-                <div id="lfo-header">
-                    <span class="seq-label">LFOs</span>
-                </div>
-                <div id="lfo-grid"></div>
-            </div>
-        </div>
-        <div id="play-mode" class="hidden">
-            <div id="macro-grid"></div>
-            <div id="control-rows">
-                <div id="root-row">
-                    <div id="root-selector"></div>
-                </div>
-                <div id="scale-row">
-                    <div id="scale-selector"></div>
-                </div>
-                <div id="env-row">
-                    <button id="env-toggle" class="env-btn" aria-label="Toggle envelope">◇</button>
-                    <span class="env-label">ATK</span>
-                    <input type="range" id="env-attack" class="env-slider" min="0" max="100" value="1">
-                    <span class="env-label">DCY</span>
-                    <input type="range" id="env-decay" class="env-slider" min="0" max="100" value="50">
-                </div>
-            </div>
-            <div id="keyboard"></div>
-        </div>
         <div id="start-overlay">
             <div class="start-content">
                 <pre class="logo">
 ╔═══════════════════╗
-║  ▣ PATCH UNKNOWN ▣  ║
+║  ◆ MOTIF UNKNOWN ◆  ║
 ║                   ║
 ║   ◈ ◇ ◆ ◈ ◇ ◆ ◈   ║
 ║                   ║

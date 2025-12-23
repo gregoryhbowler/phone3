@@ -102,6 +102,29 @@ class PatchUnknown {
         // Spectral analyzer for self-listening
         this.analyser = null;
         this.spectralData = null;
+
+        // ============== PHRASE GENERATOR STATE ==============
+        this.phraseActive = true;
+        this.currentPhrase = null;
+        this.phrasePosition = 0;
+        this.phraseTempo = 90 + Math.random() * 60; // 90-150 BPM
+        this.phraseTimer = null;
+        this.phraseLengthBars = 4;
+        this.beatsPerBar = 4;
+
+        // Musical influence levels (0-1)
+        this.harmonyLevel = 0.5;      // 0 = sparse, 1 = rich chords
+        this.minimalismLevel = 0.5;   // 0 = varied, 1 = repetitive/phasing
+
+        // Tintinnabuli mode
+        this.tintinnabuliEnabled = false;
+        this.tintinnabuliMode = 'above'; // 'above', 'below', 'alternating'
+
+        // Voice pools for phrase playback
+        this.melodyVoicePool = [];
+        this.tVoicePool = [];
+        this.chordVoicePool = [];
+        this.voiceIndex = 0;
     }
 
     async init() {
@@ -162,11 +185,17 @@ class PatchUnknown {
             this.workletReady = false;
         }
 
+        // Store reverb send for later access
+        this.reverbSend = reverbSend;
+
         // Initialize with random patch
         this.randomize();
         this.isRunning = true;
 
-        // Start Krell autonomous behavior
+        // Initialize voice pools for phrase generation
+        this.initializeVoicePools();
+
+        // Start Krell autonomous behavior (adapted for phrase variation)
         this.startKrell();
 
         // Start glacial drift
@@ -174,6 +203,9 @@ class PatchUnknown {
 
         // Start spectral listening
         this.startListening();
+
+        // Start phrase generation
+        this.startPhrasePlayback();
 
         return this;
     }
@@ -463,16 +495,18 @@ class PatchUnknown {
 
     krellAction() {
         const actions = [
-            () => this.krellModulate(),      // Modulate existing cells
-            () => this.krellToggle(),        // Toggle a cell
-            () => this.krellDrift(),         // Drift frequencies
-            () => this.krellPhase(),         // Adjust phase relationships
-            () => this.krellDecay(),         // Apply decay to a cell
-            () => this.krellHarmonicShift(), // Shift to related harmonic
+            () => this.krellModulate(),        // Modulate existing cells
+            () => this.krellToggle(),          // Toggle a cell
+            () => this.krellDrift(),           // Drift frequencies
+            () => this.krellPhase(),           // Adjust phase relationships
+            () => this.krellDecay(),           // Apply decay to a cell
+            () => this.krellHarmonicShift(),   // Shift to related harmonic
+            () => this.krellPhraseVariation(), // Add variation to current phrase
+            () => this.krellTempoNudge(),      // Subtle tempo changes
         ];
 
-        // Weight toward modulation and drift (subtle changes)
-        const weights = [0.3, 0.15, 0.25, 0.1, 0.1, 0.1];
+        // Weight toward modulation, drift, and phrase variation
+        const weights = [0.2, 0.1, 0.2, 0.08, 0.08, 0.08, 0.15, 0.11];
         let r = Math.random();
         let cumulative = 0;
         for (let i = 0; i < actions.length; i++) {
@@ -482,6 +516,41 @@ class PatchUnknown {
                 break;
             }
         }
+    }
+
+    // Add subtle variation to current phrase
+    krellPhraseVariation() {
+        if (!this.currentPhrase) return;
+
+        // Occasionally transpose a note
+        if (this.currentPhrase.notes.length > 0 && Math.random() < 0.3) {
+            const idx = Math.floor(Math.random() * this.currentPhrase.notes.length);
+            const note = this.currentPhrase.notes[idx];
+            note.degree += Math.random() < 0.5 ? 1 : -1;
+            note.degree = Math.max(0, note.degree);
+        }
+
+        // Occasionally adjust velocity
+        if (this.currentPhrase.notes.length > 0 && Math.random() < 0.25) {
+            const idx = Math.floor(Math.random() * this.currentPhrase.notes.length);
+            const note = this.currentPhrase.notes[idx];
+            note.velocity = Math.max(0.2, Math.min(0.8, note.velocity + (Math.random() - 0.5) * 0.1));
+        }
+
+        // Subtle harmony/minimalism level drift
+        if (Math.random() < 0.15) {
+            this.harmonyLevel = Math.max(0.1, Math.min(0.9, this.harmonyLevel + (Math.random() - 0.5) * 0.05));
+        }
+        if (Math.random() < 0.15) {
+            this.minimalismLevel = Math.max(0.1, Math.min(0.9, this.minimalismLevel + (Math.random() - 0.5) * 0.05));
+        }
+    }
+
+    // Subtle tempo drift
+    krellTempoNudge() {
+        // Very subtle tempo variation for organic feel
+        this.phraseTempo += (Math.random() - 0.5) * 2;
+        this.phraseTempo = Math.max(50, Math.min(160, this.phraseTempo));
     }
 
     krellModulate() {
@@ -1143,6 +1212,12 @@ class PatchUnknown {
             }
         });
 
+        // Reset phrase generator state
+        this.harmonyLevel = 0.3 + Math.random() * 0.4;
+        this.minimalismLevel = 0.3 + Math.random() * 0.4;
+        this.phraseTempo = 70 + Math.random() * 80;
+        this.phrasePosition = 0;
+
         if (roll < 0.70) {
             // 70% - Pure chaos randomization
             this.randomizeChaos();
@@ -1156,6 +1231,9 @@ class PatchUnknown {
             // 10% - Rhythmic-biased (lower left)
             this.randomizeRhythmic();
         }
+
+        // Generate new phrase immediately
+        this.generatePhrase();
     }
 
     // Pure chaos randomization (original behavior)
@@ -1600,12 +1678,16 @@ class PatchUnknown {
         if (this.krellTimer) {
             clearTimeout(this.krellTimer);
         }
+        if (this.phraseTimer) {
+            clearTimeout(this.phraseTimer);
+        }
     }
 
     resume() {
         if (this.ctx && this.ctx.state === 'suspended') {
             this.ctx.resume();
             this.startKrell();
+            this.startPhrasePlayback();
         }
     }
 
@@ -2269,6 +2351,775 @@ class PatchUnknown {
             // Update the waveshaper curve
             this.updateVoiceDistortion(cell.distortion, this.globalDistortion);
         });
+    }
+
+    // ============== PHRASE GENERATOR SYSTEM ==============
+
+    // Initialize voice pools for smooth phrase playback
+    initializeVoicePools() {
+        // Create 4 melody voices
+        for (let i = 0; i < 4; i++) {
+            this.melodyVoicePool.push(this.createPhraseVoice('melody'));
+        }
+        // Create 4 T-voices for tintinnabuli
+        for (let i = 0; i < 4; i++) {
+            this.tVoicePool.push(this.createPhraseVoice('tvoice'));
+        }
+        // Create 6 chord voices
+        for (let i = 0; i < 6; i++) {
+            this.chordVoicePool.push(this.createPhraseVoice('chord'));
+        }
+    }
+
+    // Create a single voice for phrase playback
+    createPhraseVoice(type) {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        const filter = this.ctx.createBiquadFilter();
+
+        // Different timbres for different voice types
+        if (type === 'melody') {
+            osc.type = ['sine', 'triangle', 'sawtooth'][Math.floor(Math.random() * 3)];
+            filter.type = 'lowpass';
+            filter.frequency.value = 2000 + Math.random() * 3000;
+            filter.Q.value = 0.5 + Math.random() * 2;
+        } else if (type === 'tvoice') {
+            // T-voices are purer, simpler
+            osc.type = Math.random() < 0.7 ? 'sine' : 'triangle';
+            filter.type = 'lowpass';
+            filter.frequency.value = 3000 + Math.random() * 2000;
+            filter.Q.value = 0.5;
+        } else {
+            // Chord voices - warmer
+            osc.type = ['sine', 'triangle'][Math.floor(Math.random() * 2)];
+            filter.type = 'lowpass';
+            filter.frequency.value = 1500 + Math.random() * 2000;
+            filter.Q.value = 0.5 + Math.random();
+        }
+
+        gain.gain.value = 0; // Start silent
+
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.masterGain);
+        osc.start();
+
+        return {
+            osc,
+            gain,
+            filter,
+            busy: false,
+            releaseTime: 0
+        };
+    }
+
+    // Get an available voice from a pool
+    getAvailableVoice(pool) {
+        const now = this.ctx.currentTime;
+        // First look for a free voice
+        for (const voice of pool) {
+            if (!voice.busy && now > voice.releaseTime) {
+                return voice;
+            }
+        }
+        // If none free, steal the oldest
+        let oldest = pool[0];
+        for (const voice of pool) {
+            if (voice.releaseTime < oldest.releaseTime) {
+                oldest = voice;
+            }
+        }
+        return oldest;
+    }
+
+    // Start phrase playback loop
+    startPhrasePlayback() {
+        if (!this.phraseActive) return;
+
+        // Generate first phrase
+        this.generatePhrase();
+
+        const playStep = () => {
+            if (!this.phraseActive || !this.isRunning) return;
+
+            const currentBeat = this.phrasePosition;
+
+            // Play notes at this beat
+            this.playNotesAtBeat(currentBeat);
+
+            // Advance position (16th note resolution)
+            this.phrasePosition += 0.25;
+
+            // Check for phrase end
+            if (this.phrasePosition >= this.currentPhrase.length) {
+                this.phrasePosition = 0;
+                this.generatePhrase(); // Generate new phrase
+            }
+
+            // Schedule next step
+            const msPerBeat = 60000 / this.phraseTempo;
+            this.phraseTimer = setTimeout(playStep, msPerBeat / 4);
+        };
+
+        // Small delay to let everything initialize
+        setTimeout(playStep, 500);
+    }
+
+    // Generate a new phrase
+    generatePhrase() {
+        // Randomly select phrase length (1, 2, 4, or 8 bars)
+        const lengths = [1, 2, 4, 8];
+        // Bias toward shorter phrases when more minimalist
+        const lengthWeights = this.minimalismLevel > 0.6 ?
+            [0.3, 0.4, 0.2, 0.1] : [0.15, 0.25, 0.35, 0.25];
+
+        let r = Math.random();
+        let lengthIdx = 0;
+        for (let i = 0; i < lengthWeights.length; i++) {
+            r -= lengthWeights[i];
+            if (r <= 0) { lengthIdx = i; break; }
+        }
+        this.phraseLengthBars = lengths[lengthIdx];
+
+        const totalBeats = this.phraseLengthBars * this.beatsPerBar;
+
+        this.currentPhrase = {
+            length: totalBeats,
+            notes: [],
+            chords: [],
+            tintinnabuli: [],
+            type: this.selectPhraseType()
+        };
+
+        // Generate based on phrase type
+        switch (this.currentPhrase.type) {
+            case 'minimalist':
+                this.generateMinimalistPhrase();
+                break;
+            case 'chordal':
+                this.generateChordalPhrase();
+                break;
+            case 'ambient':
+                this.generateAmbientPhrase();
+                break;
+            default:
+                this.generateMelodicPhrase();
+        }
+
+        // Generate tintinnabuli counterpoint if enabled
+        if (this.tintinnabuliEnabled && this.currentPhrase.notes.length > 0) {
+            this.generateTintinnabuliVoice();
+        }
+    }
+
+    // Select phrase type based on levels
+    selectPhraseType() {
+        const r = Math.random();
+
+        // High minimalism = more minimalist/ambient phrases
+        if (this.minimalismLevel > 0.7) {
+            return r < 0.5 ? 'minimalist' : (r < 0.8 ? 'ambient' : 'melodic');
+        }
+
+        // High harmony = more chordal phrases
+        if (this.harmonyLevel > 0.7) {
+            return r < 0.4 ? 'chordal' : (r < 0.7 ? 'melodic' : 'ambient');
+        }
+
+        // Balanced - varied selection
+        if (r < 0.35) return 'melodic';
+        if (r < 0.55) return 'chordal';
+        if (r < 0.75) return 'minimalist';
+        return 'ambient';
+    }
+
+    // Generate melodic phrase - clear rhythmic sequences
+    generateMelodicPhrase() {
+        const scale = this.scales[this.currentScale] || this.scales.major;
+        const notes = [];
+        let currentDegree = Math.floor(scale.length / 2) + Math.floor(Math.random() * 3);
+
+        // More defined rhythmic patterns - think sequencer
+        const rhythmPatterns = [
+            [0.5, 0.5, 0.5, 0.5],  // 16th notes
+            [0.5, 0.5, 1],         // 16th-16th-8th
+            [1, 1, 1, 1],          // 8th notes
+            [1, 0.5, 0.5],         // 8th-16th-16th
+            [0.5, 0.5, 0.5, 0.5, 1, 1], // mixed
+        ];
+
+        let beat = 0;
+        let patternIndex = Math.floor(Math.random() * rhythmPatterns.length);
+
+        while (beat < this.currentPhrase.length) {
+            const pattern = rhythmPatterns[patternIndex];
+
+            for (const duration of pattern) {
+                if (beat >= this.currentPhrase.length) break;
+
+                // Melodic movement - more stepwise for clear sequences
+                const movement = Math.random();
+                if (movement < 0.5) {
+                    currentDegree += Math.random() < 0.5 ? 1 : -1; // Step up or down
+                } else if (movement < 0.75) {
+                    currentDegree += Math.random() < 0.5 ? 2 : -2; // Skip
+                } else if (movement < 0.9) {
+                    // Jump to chord tone
+                    const chordTones = [0, 2, 4];
+                    currentDegree = chordTones[Math.floor(Math.random() * 3)] +
+                                   Math.floor(currentDegree / scale.length) * scale.length;
+                }
+                // else repeat
+
+                // Keep in range (2 octaves)
+                currentDegree = Math.max(0, Math.min(scale.length * 2 - 1, currentDegree));
+
+                // Lower rest probability for denser sequences
+                if (Math.random() > 0.92) {
+                    beat += duration;
+                    continue;
+                }
+
+                notes.push({
+                    beat,
+                    degree: currentDegree,
+                    duration,
+                    velocity: 0.6 + Math.random() * 0.25 // Higher velocity
+                });
+
+                beat += duration;
+            }
+
+            // Occasionally switch pattern for variety
+            if (Math.random() < 0.3) {
+                patternIndex = Math.floor(Math.random() * rhythmPatterns.length);
+            }
+        }
+
+        this.currentPhrase.notes = notes;
+    }
+
+    // Generate chordal phrase - beds of harmony
+    generateChordalPhrase() {
+        const scale = this.scales[this.currentScale] || this.scales.major;
+        const chords = [];
+
+        // Chord sizes based on harmony level
+        const chordSizes = this.harmonyLevel > 0.6 ? [3, 4, 5] : [2, 3];
+
+        // Number of chord changes
+        const numChords = Math.max(2, Math.floor(this.currentPhrase.length / 2));
+        const beatsPerChord = this.currentPhrase.length / numChords;
+
+        for (let i = 0; i < numChords; i++) {
+            const size = chordSizes[Math.floor(Math.random() * chordSizes.length)];
+            const rootDegree = Math.floor(Math.random() * scale.length);
+            const degrees = [rootDegree];
+
+            // Build chord (stacked thirds in scale degrees)
+            for (let j = 1; j < size; j++) {
+                degrees.push((rootDegree + j * 2) % (scale.length * 2));
+            }
+
+            chords.push({
+                beat: i * beatsPerChord,
+                degrees,
+                duration: beatsPerChord,
+                velocity: 0.35 + Math.random() * 0.15
+            });
+        }
+
+        this.currentPhrase.chords = chords;
+
+        // Also add a sparse melody over chords if harmony is moderate
+        if (this.harmonyLevel < 0.8 && Math.random() < 0.6) {
+            this.generateSparseMelody();
+        }
+    }
+
+    // Generate sparse melody for ambient/chordal phrases
+    generateSparseMelody() {
+        const scale = this.scales[this.currentScale] || this.scales.major;
+        const numNotes = 2 + Math.floor(Math.random() * 4);
+
+        for (let i = 0; i < numNotes; i++) {
+            const beat = Math.random() * this.currentPhrase.length;
+            const degree = Math.floor(Math.random() * scale.length * 2);
+
+            this.currentPhrase.notes.push({
+                beat,
+                degree,
+                duration: 1 + Math.random() * 2,
+                velocity: 0.4 + Math.random() * 0.2
+            });
+        }
+
+        // Sort by beat time
+        this.currentPhrase.notes.sort((a, b) => a.beat - b.beat);
+    }
+
+    // Generate minimalist phrase - Reich/Glass style repetition
+    generateMinimalistPhrase() {
+        const scale = this.scales[this.currentScale] || this.scales.major;
+        const notes = [];
+
+        // Create a short cell (3-6 notes) that repeats
+        const cellLength = 3 + Math.floor(Math.random() * 4);
+        const cell = [];
+
+        let degree = Math.floor(Math.random() * scale.length) + Math.floor(scale.length / 2);
+        for (let i = 0; i < cellLength; i++) {
+            const durations = [0.5, 0.5, 1, 1, 0.25, 0.25];
+            cell.push({
+                degree,
+                duration: durations[Math.floor(Math.random() * durations.length)]
+            });
+            degree += Math.floor((Math.random() - 0.5) * 4);
+            degree = Math.max(0, Math.min(scale.length * 2 - 1, degree));
+        }
+
+        // Repeat the cell with gradual variation
+        let beat = 0;
+        let variation = 0;
+        let repeatCount = 0;
+
+        while (beat < this.currentPhrase.length) {
+            for (const note of cell) {
+                if (beat >= this.currentPhrase.length) break;
+
+                // Gradual variation (Reich-style additive process)
+                let adjustedDegree = note.degree;
+                if (variation > 0.3 && Math.random() < variation * 0.25) {
+                    adjustedDegree += Math.random() < 0.5 ? 1 : -1;
+                }
+
+                // Occasional rest in later repetitions
+                if (repeatCount > 2 && Math.random() < 0.1) {
+                    beat += note.duration;
+                    continue;
+                }
+
+                notes.push({
+                    beat,
+                    degree: Math.max(0, Math.min(scale.length * 2 - 1, adjustedDegree)),
+                    duration: note.duration,
+                    velocity: 0.45 + Math.random() * 0.15
+                });
+
+                beat += note.duration;
+            }
+
+            variation = Math.min(1, variation + 0.08);
+            repeatCount++;
+        }
+
+        this.currentPhrase.notes = notes;
+    }
+
+    // Generate ambient phrase - sparse, drone-like
+    generateAmbientPhrase() {
+        const scale = this.scales[this.currentScale] || this.scales.major;
+        const notes = [];
+
+        // Very sparse notes with long durations
+        const numNotes = 2 + Math.floor(Math.random() * 3);
+        const noteSpacing = this.currentPhrase.length / numNotes;
+
+        for (let i = 0; i < numNotes; i++) {
+            const beat = i * noteSpacing + (Math.random() - 0.5) * noteSpacing * 0.3;
+            const degree = Math.floor(Math.random() * scale.length);
+            const duration = 2 + Math.random() * 4; // Long notes
+
+            notes.push({
+                beat: Math.max(0, beat),
+                degree,
+                duration,
+                velocity: 0.25 + Math.random() * 0.2 // Softer
+            });
+        }
+
+        this.currentPhrase.notes = notes.sort((a, b) => a.beat - b.beat);
+
+        // Add drone chord on root
+        this.currentPhrase.chords = [{
+            beat: 0,
+            degrees: [0, Math.floor(scale.length / 2)], // Root + fifth-ish
+            duration: this.currentPhrase.length,
+            velocity: 0.2
+        }];
+    }
+
+    // Generate tintinnabuli T-voice (Arvo Pärt style)
+    generateTintinnabuliVoice() {
+        if (!this.currentPhrase.notes.length) return;
+
+        const scale = this.scales[this.currentScale] || this.scales.major;
+
+        // Triad degrees (1, 3, 5 in scale indices)
+        // For most scales: root (0), third (2), fifth (4)
+        const triadDegrees = [0, 2, 4].filter(d => d < scale.length);
+
+        this.currentPhrase.tintinnabuli = this.currentPhrase.notes.map((note, idx) => {
+            const melodyDegree = note.degree % scale.length;
+            let tDegree;
+
+            const mode = this.tintinnabuliMode === 'alternating' ?
+                (idx % 2 === 0 ? 'above' : 'below') : this.tintinnabuliMode;
+
+            tDegree = this.findNearestTriadTone(melodyDegree, triadDegrees, mode, scale.length);
+
+            // Place in same octave region as melody
+            const melodyOctave = Math.floor(note.degree / scale.length);
+
+            return {
+                beat: note.beat,
+                degree: melodyOctave * scale.length + tDegree,
+                duration: note.duration,
+                velocity: note.velocity * 0.6 // T-voice slightly quieter
+            };
+        });
+    }
+
+    // Find nearest triad tone in given direction
+    findNearestTriadTone(melodyDegree, triadDegrees, direction, scaleLength) {
+        const sorted = [...triadDegrees].sort((a, b) => a - b);
+
+        if (direction === 'above') {
+            for (const t of sorted) {
+                if (t > melodyDegree) return t;
+            }
+            // Wrap to next octave
+            return sorted[0] + scaleLength;
+        } else {
+            for (let i = sorted.length - 1; i >= 0; i--) {
+                if (sorted[i] < melodyDegree) return sorted[i];
+            }
+            // Wrap to previous octave
+            return sorted[sorted.length - 1] - scaleLength;
+        }
+    }
+
+    // Play notes at current beat position
+    playNotesAtBeat(beat) {
+        if (!this.currentPhrase) return;
+
+        const tolerance = 0.125; // 32nd note tolerance
+
+        // Play melody notes
+        const melodyNotes = this.currentPhrase.notes
+            .filter(n => Math.abs(n.beat - beat) < tolerance);
+        melodyNotes.forEach(note => this.triggerMelodyNote(note));
+
+        // Play chord notes
+        const chordNotes = this.currentPhrase.chords
+            .filter(c => Math.abs(c.beat - beat) < tolerance);
+        chordNotes.forEach(chord => this.triggerChord(chord));
+
+        // Play tintinnabuli
+        if (this.tintinnabuliEnabled) {
+            const tNotes = this.currentPhrase.tintinnabuli
+                .filter(t => Math.abs(t.beat - beat) < tolerance);
+            tNotes.forEach(tNote => this.triggerTVoiceNote(tNote));
+        }
+
+        // Debug: log when notes are played
+        if (melodyNotes.length > 0 || chordNotes.length > 0) {
+            // Uncomment for debugging: console.log('Beat ' + beat.toFixed(2) + ': melody=' + melodyNotes.length + ', chords=' + chordNotes.length);
+        }
+    }
+
+    // Trigger a melody note - LOUD and clearly articulated
+    triggerMelodyNote(note) {
+        const scale = this.scales[this.currentScale] || this.scales.major;
+        const freq = this.degreeToFrequency(note.degree, scale);
+        const voice = this.getAvailableVoice(this.melodyVoicePool);
+
+        voice.osc.frequency.setTargetAtTime(freq, this.ctx.currentTime, 0.002);
+
+        // Punchy articulation envelope
+        const now = this.ctx.currentTime;
+        const attackTime = 0.003; // Very fast attack for clarity
+        const sustainTime = note.duration * (60 / this.phraseTempo) * 0.7;
+        const releaseTime = 0.08;
+
+        // VERY LOUD - 0.4 for clear sequence sound
+        const peakGain = note.velocity * 0.4;
+
+        voice.gain.gain.cancelScheduledValues(now);
+        voice.gain.gain.setValueAtTime(0, now);
+        voice.gain.gain.linearRampToValueAtTime(peakGain, now + attackTime);
+        voice.gain.gain.setValueAtTime(peakGain * 0.85, now + attackTime + sustainTime);
+        voice.gain.gain.linearRampToValueAtTime(0, now + attackTime + sustainTime + releaseTime);
+
+        voice.busy = true;
+        voice.releaseTime = now + attackTime + sustainTime + releaseTime;
+    }
+
+    // Trigger a chord - LOUD with clear attack
+    triggerChord(chord) {
+        const scale = this.scales[this.currentScale] || this.scales.major;
+
+        chord.degrees.forEach((degree, i) => {
+            const freq = this.degreeToFrequency(degree, scale);
+            const voice = this.getAvailableVoice(this.chordVoicePool);
+
+            voice.osc.frequency.setTargetAtTime(freq, this.ctx.currentTime, 0.005);
+
+            const now = this.ctx.currentTime;
+            const attackTime = 0.01 + i * 0.005; // Fast attack, slight stagger
+            const sustainTime = chord.duration * (60 / this.phraseTempo) * 0.8;
+            const releaseTime = 0.2;
+
+            // LOUD - 0.25 for clear chord sound
+            const peakGain = chord.velocity * 0.25;
+
+            voice.gain.gain.cancelScheduledValues(now);
+            voice.gain.gain.setValueAtTime(0, now);
+            voice.gain.gain.linearRampToValueAtTime(peakGain, now + attackTime);
+            voice.gain.gain.setValueAtTime(peakGain * 0.75, now + attackTime + sustainTime);
+            voice.gain.gain.linearRampToValueAtTime(0, now + attackTime + sustainTime + releaseTime);
+
+            voice.busy = true;
+            voice.releaseTime = now + attackTime + sustainTime + releaseTime;
+        });
+    }
+
+    // Trigger a tintinnabuli T-voice note - clear bell-like tone
+    triggerTVoiceNote(note) {
+        const scale = this.scales[this.currentScale] || this.scales.major;
+        const freq = this.degreeToFrequency(note.degree, scale);
+        const voice = this.getAvailableVoice(this.tVoicePool);
+
+        voice.osc.frequency.setTargetAtTime(freq, this.ctx.currentTime, 0.002);
+
+        const now = this.ctx.currentTime;
+        const attackTime = 0.005;
+        const sustainTime = note.duration * (60 / this.phraseTempo) * 0.6;
+        const releaseTime = 0.12;
+
+        // Clear but slightly softer than melody - 0.2
+        const peakGain = note.velocity * 0.2;
+
+        voice.gain.gain.cancelScheduledValues(now);
+        voice.gain.gain.setValueAtTime(0, now);
+        voice.gain.gain.linearRampToValueAtTime(peakGain, now + attackTime);
+        voice.gain.gain.setValueAtTime(peakGain * 0.75, now + attackTime + sustainTime);
+        voice.gain.gain.linearRampToValueAtTime(0, now + attackTime + sustainTime + releaseTime);
+
+        voice.busy = true;
+        voice.releaseTime = now + attackTime + sustainTime + releaseTime;
+    }
+
+    // Convert scale degree to frequency
+    degreeToFrequency(degree, scale) {
+        const octave = Math.floor(degree / scale.length);
+        const scaleDegree = ((degree % scale.length) + scale.length) % scale.length;
+        const ratio = scale[scaleDegree];
+        return this.rootNote * ratio * Math.pow(2, octave);
+    }
+
+    // ============== NEW CORNER BEHAVIORS ==============
+
+    // Upper left (cell 0): More Harmony - IMMEDIATE and DRAMATIC
+    nudgeHarmony() {
+        console.log('=== HARMONY BUTTON PRESSED ===');
+
+        // Strong increase in harmony level
+        this.harmonyLevel = Math.min(1, this.harmonyLevel + 0.3);
+
+        // Decrease minimalism
+        this.minimalismLevel = Math.max(0, this.minimalismLevel - 0.15);
+
+        // Always shift toward harmonic-friendly scales
+        const harmonicScales = ['major', 'harmonic', 'dreamHouse', 'dorian'];
+        this.currentScale = harmonicScales[Math.floor(Math.random() * harmonicScales.length)];
+
+        // Reduce cell-based sounds, boost phrase sounds
+        this.fadeDownCellVoices();
+
+        // IMMEDIATELY generate a new chordal phrase
+        this.phrasePosition = 0;
+        this.currentPhrase = {
+            length: 16, // 4 bars
+            notes: [],
+            chords: [],
+            tintinnabuli: [],
+            type: 'chordal'
+        };
+        this.generateChordalPhrase();
+
+        // Also add a melody over the chords
+        this.generateSparseMelody();
+
+        // If tintinnabuli is on, generate T-voice
+        if (this.tintinnabuliEnabled && this.currentPhrase.notes.length > 0) {
+            this.generateTintinnabuliVoice();
+        }
+
+        // Slower, more majestic tempo
+        this.phraseTempo = 70 + Math.random() * 30;
+
+        // Immediately trigger first notes
+        this.playNotesAtBeat(0);
+
+        console.log('HARMONY: level=' + this.harmonyLevel.toFixed(2) + ', scale=' + this.currentScale +
+                   ', chords=' + this.currentPhrase.chords.length + ', notes=' + this.currentPhrase.notes.length);
+    }
+
+    // Upper right (cell 7): More Minimalist - IMMEDIATE Reich/Glass effect
+    nudgeMinimalist() {
+        console.log('=== MINIMALIST BUTTON PRESSED ===');
+
+        // Strong increase in minimalism
+        this.minimalismLevel = Math.min(1, this.minimalismLevel + 0.3);
+
+        // Decrease harmony
+        this.harmonyLevel = Math.max(0, this.harmonyLevel - 0.15);
+
+        // Reduce cell-based sounds, boost phrase sounds
+        this.fadeDownCellVoices();
+
+        // Reich-style: create NOTICEABLE phasing between voices
+        const detuneAmount = 1 + Math.random() * 3; // More noticeable cents
+        this.melodyVoicePool.forEach((voice, i) => {
+            const detune = (i - this.melodyVoicePool.length / 2) * detuneAmount;
+            voice.osc.detune.setTargetAtTime(detune, this.ctx.currentTime, 0.1);
+        });
+
+        // IMMEDIATELY generate a new minimalist phrase
+        this.phrasePosition = 0;
+        this.currentPhrase = {
+            length: 8, // 2 bars - short repeating cell
+            notes: [],
+            chords: [],
+            tintinnabuli: [],
+            type: 'minimalist'
+        };
+        this.generateMinimalistPhrase();
+
+        // If tintinnabuli is on, generate T-voice
+        if (this.tintinnabuliEnabled && this.currentPhrase.notes.length > 0) {
+            this.generateTintinnabuliVoice();
+        }
+
+        // Steady, hypnotic tempo
+        this.phraseTempo = 100 + Math.random() * 40;
+
+        // Immediately trigger first notes
+        this.playNotesAtBeat(0);
+
+        console.log('MINIMALIST: level=' + this.minimalismLevel.toFixed(2) + ', tempo=' + this.phraseTempo.toFixed(0) +
+                   ', notes=' + this.currentPhrase.notes.length);
+    }
+
+    // Lower left (cell 56): Timbral Randomization - DRAMATIC change
+    randomizeTimbre() {
+        console.log('=== TIMBRE BUTTON PRESSED ===');
+
+        // Completely randomize all timbral parameters
+        this.currentWaveformBias = Math.random();
+        this.globalFilterCutoff = 0.1 + Math.random() * 0.8;
+        this.globalFilterResonance = Math.random() * 0.7;
+        this.globalFMDepth = Math.random() * 0.6;
+        this.globalDistortion = Math.random() * 0.4;
+
+        // Apply to cell voices
+        this.applyGlobalFilter();
+        this.applyGlobalFM();
+        this.applyGlobalDistortion();
+
+        // COMPLETELY randomize ALL voice pool timbres
+        const waveforms = ['sine', 'triangle', 'sawtooth', 'square'];
+
+        this.melodyVoicePool.forEach(voice => {
+            voice.osc.type = waveforms[Math.floor(Math.random() * waveforms.length)];
+            voice.filter.frequency.setTargetAtTime(
+                500 + Math.random() * 5000,
+                this.ctx.currentTime, 0.05
+            );
+            voice.filter.Q.setTargetAtTime(
+                0.5 + Math.random() * 8,
+                this.ctx.currentTime, 0.05
+            );
+        });
+
+        this.tVoicePool.forEach(voice => {
+            voice.osc.type = waveforms[Math.floor(Math.random() * 2)]; // Simpler for T-voice
+            voice.filter.frequency.setTargetAtTime(
+                1000 + Math.random() * 4000,
+                this.ctx.currentTime, 0.05
+            );
+        });
+
+        this.chordVoicePool.forEach(voice => {
+            voice.osc.type = waveforms[Math.floor(Math.random() * waveforms.length)];
+            voice.filter.frequency.setTargetAtTime(
+                300 + Math.random() * 3000,
+                this.ctx.currentTime, 0.05
+            );
+            voice.filter.Q.setTargetAtTime(
+                0.5 + Math.random() * 5,
+                this.ctx.currentTime, 0.05
+            );
+        });
+
+        // Dramatic reverb change
+        if (this.reverbSend) {
+            this.reverbSend.gain.setTargetAtTime(
+                0.05 + Math.random() * 0.5,
+                this.ctx.currentTime, 0.1
+            );
+        }
+
+        // Random tempo shift
+        this.phraseTempo = 60 + Math.random() * 100;
+
+        // Immediately play a note burst to demonstrate new timbre
+        this.playNotesAtBeat(this.phrasePosition);
+
+        console.log('TIMBRE: waveformBias=' + this.currentWaveformBias.toFixed(2) +
+                    ', filter=' + this.globalFilterCutoff.toFixed(2) +
+                    ', tempo=' + this.phraseTempo.toFixed(0));
+    }
+
+    // Fade down cell-based voices to make phrase voices more prominent
+    fadeDownCellVoices() {
+        const now = this.ctx.currentTime;
+
+        // Fade down all active cell voices
+        this.cells.forEach((cell, i) => {
+            if (cell && cell.node && cell.gain) {
+                cell.gain.gain.setTargetAtTime(
+                    cell.gain.gain.value * 0.3, // Reduce to 30%
+                    now, 0.2
+                );
+            }
+        });
+
+        // Reduce overall cell activity
+        this.krellDensity = Math.max(0.05, this.krellDensity * 0.5);
+
+        console.log('Cell voices faded down, krellDensity=' + this.krellDensity.toFixed(3));
+    }
+
+    // Set root note from semitones (0-11, where 0 = C)
+    setRootSemitones(semitones) {
+        // C4 = 261.63 Hz, we use lower octave
+        // A = 55 Hz (A1), C is 3 semitones up from A
+        const cFreq = 55 * Math.pow(2, 3/12); // C2 ~65.4 Hz
+        this.rootNote = cFreq * Math.pow(2, semitones / 12);
+        this.currentRoot = semitones;
+    }
+
+    // Toggle a cell and return new state
+    toggleCell(index) {
+        if (this.cells[index]) {
+            this.deactivateCell(index);
+            return false;
+        } else {
+            this.activateCell(index);
+            return true;
+        }
     }
 }
 

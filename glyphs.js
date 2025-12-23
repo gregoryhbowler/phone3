@@ -148,10 +148,14 @@ const GLYPHS = {
 
     // Special glyphs for corner cells
     special: {
-        melodic: `♪♫♪\n♫◈♫\n♪♫♪`,    // Upper left - yearning arpeggios
-        evolve: `⟰⟰⟰\n⟰✧⟰\n⟰⟰⟰`,     // Upper right - consonance
-        rhythmic: `⏱⏱⏱\n⏱◉⏱\n⏱⏱⏱`,  // Lower left - pulse
-        randomize: `⁂⁂⁂\n⁂※⁂\n⁂⁂⁂`  // Lower right - chaos
+        harmony: `♫♬♫\n♬◈♬\n♫♬♫`,      // Upper left - more harmony
+        minimalist: `≋≋≋\n≋◎≋\n≋≋≋`,   // Upper right - minimalist/phasing
+        timbre: `⧫⧫⧫\n⧫◉⧫\n⧫⧫⧫`,      // Lower left - timbral
+        randomize: `⁂⁂⁂\n⁂※⁂\n⁂⁂⁂`,   // Lower right - chaos
+        // Legacy names for compatibility
+        melodic: `♫♬♫\n♬◈♬\n♫♬♫`,
+        evolve: `≋≋≋\n≋◎≋\n≋≋≋`,
+        rhythmic: `⧫⧫⧫\n⧫◉⧫\n⧫⧫⧫`
     }
 };
 
