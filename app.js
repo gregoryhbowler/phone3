@@ -57,6 +57,7 @@ function setupHeader() {
     const rootSelect = document.getElementById('root-select');
     const scaleSelect = document.getElementById('scale-select');
     const tintSelect = document.getElementById('tint-select');
+    const antiDroneBtn = document.getElementById('anti-drone-btn');
     const recordBtn = document.getElementById('record-btn');
 
     // Root note selection
@@ -67,6 +68,13 @@ function setupHeader() {
 
     // Tintinnabuli mode selection
     tintSelect.addEventListener('change', handleTintChange);
+
+    // Anti-drone button
+    antiDroneBtn.addEventListener('click', handleAntiDrone);
+    antiDroneBtn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        handleAntiDrone();
+    }, { passive: false });
 
     // Recording toggle
     recordBtn.addEventListener('click', toggleRecording);
@@ -105,6 +113,16 @@ function handleTintChange(e) {
         synth.tintinnabuliEnabled = true;
         synth.tintinnabuliMode = mode === 'alt' ? 'alternating' : mode;
     }
+}
+
+// Handle anti-drone button - kills drone voices
+function handleAntiDrone() {
+    synth.killDrone();
+
+    // Visual feedback
+    const btn = document.getElementById('anti-drone-btn');
+    btn.style.color = '#f88';
+    setTimeout(() => btn.style.color = '', 200);
 }
 
 // Toggle recording

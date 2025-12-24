@@ -124,6 +124,22 @@ html, body {
     border-color: #4a5a5a;
 }
 
+/* Anti-drone button */
+#anti-drone-btn {
+    width: auto;
+    padding: 0 8px;
+    font-size: 9px;
+    text-transform: lowercase;
+    color: #a66;
+    letter-spacing: -0.5px;
+}
+
+#anti-drone-btn:active {
+    color: #f88;
+    border-color: #644;
+    background: #2a1a1a;
+}
+
 /* Record button */
 #record-btn.recording {
     color: #c44;

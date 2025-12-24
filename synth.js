@@ -3378,6 +3378,35 @@ class PatchUnknown {
         console.log('Drone state: ' + (this.droneEnabled ? 'ON' : 'OFF'));
     }
 
+    // Kill all drone voices immediately
+    killDrone() {
+        const now = this.ctx.currentTime;
+
+        // Disable drone mode
+        this.droneEnabled = false;
+
+        // Immediately silence all cell voices
+        this.cells.forEach((cell, i) => {
+            if (cell && cell.params && cell.params.gain) {
+                cell.params.gain.cancelScheduledValues(now);
+                cell.params.gain.setTargetAtTime(0, now, 0.05); // Fast fade
+            }
+            if (cell && cell.partialGains) {
+                cell.partialGains.forEach(g => {
+                    try {
+                        g.gain.cancelScheduledValues(now);
+                        g.gain.setTargetAtTime(0, now, 0.05);
+                    } catch (e) {}
+                });
+            }
+        });
+
+        // Also reduce Krell activity
+        this.krellDensity = Math.max(0.01, this.krellDensity * 0.3);
+
+        console.log('ANTI-DRONE: All drone voices killed');
+    }
+
     // Set root note from semitones (0-11, where 0 = C)
     setRootSemitones(semitones) {
         // C4 = 261.63 Hz, we use lower octave
