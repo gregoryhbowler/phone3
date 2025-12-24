@@ -52,33 +52,21 @@ async function init() {
     }, { passive: false });
 }
 
-// Setup header button handlers
+// Setup header control handlers
 function setupHeader() {
-    const rootBtn = document.getElementById('root-btn');
-    const scaleBtn = document.getElementById('scale-btn');
-    const tintBtn = document.getElementById('tint-btn');
+    const rootSelect = document.getElementById('root-select');
+    const scaleSelect = document.getElementById('scale-select');
+    const tintSelect = document.getElementById('tint-select');
     const recordBtn = document.getElementById('record-btn');
 
-    // Root note cycling
-    rootBtn.addEventListener('click', cycleRoot);
-    rootBtn.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        cycleRoot();
-    }, { passive: false });
+    // Root note selection
+    rootSelect.addEventListener('change', handleRootChange);
 
-    // Scale cycling
-    scaleBtn.addEventListener('click', cycleScale);
-    scaleBtn.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        cycleScale();
-    }, { passive: false });
+    // Scale selection
+    scaleSelect.addEventListener('change', handleScaleChange);
 
-    // Tintinnabuli mode cycling
-    tintBtn.addEventListener('click', cycleTintinnabuli);
-    tintBtn.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        cycleTintinnabuli();
-    }, { passive: false });
+    // Tintinnabuli mode selection
+    tintSelect.addEventListener('change', handleTintChange);
 
     // Recording toggle
     recordBtn.addEventListener('click', toggleRecording);
@@ -88,49 +76,34 @@ function setupHeader() {
     }, { passive: false });
 }
 
-// Cycle through root notes
-function cycleRoot() {
-    currentRootIndex = (currentRootIndex + 1) % ROOT_NOTES.length;
-    const rootBtn = document.getElementById('root-btn');
-    rootBtn.textContent = ROOT_NOTES[currentRootIndex];
+// Handle root note selection
+function handleRootChange(e) {
+    const rootIndex = parseInt(e.target.value);
+    currentRootIndex = rootIndex;
 
     // Update synth root (convert to semitones from C)
-    synth.setRootSemitones(currentRootIndex);
-
-    // Visual feedback
-    rootBtn.classList.add('active');
-    setTimeout(() => rootBtn.classList.remove('active'), 200);
+    synth.setRootSemitones(rootIndex);
 }
 
-// Cycle through scales
-function cycleScale() {
-    currentScaleIndex = (currentScaleIndex + 1) % SCALE_ORDER.length;
-    const scaleName = SCALE_ORDER[currentScaleIndex];
-    const scaleBtn = document.getElementById('scale-btn');
-    scaleBtn.textContent = SCALE_DISPLAY[scaleName];
+// Handle scale selection
+function handleScaleChange(e) {
+    const scaleName = e.target.value;
+    currentScaleIndex = SCALE_ORDER.indexOf(scaleName);
 
     // Update synth scale (also updates pitch quantizer)
     synth.setScale(scaleName);
-
-    // Visual feedback
-    scaleBtn.classList.add('active');
-    setTimeout(() => scaleBtn.classList.remove('active'), 200);
 }
 
-// Cycle through tintinnabuli modes
-function cycleTintinnabuli() {
-    currentTintIndex = (currentTintIndex + 1) % TINT_MODES.length;
-    const mode = TINT_MODES[currentTintIndex];
-    const tintBtn = document.getElementById('tint-btn');
-    tintBtn.textContent = TINT_DISPLAY[mode];
+// Handle tintinnabuli mode selection
+function handleTintChange(e) {
+    const mode = e.target.value;
+    currentTintIndex = TINT_MODES.indexOf(mode);
 
     if (mode === 'off') {
         synth.tintinnabuliEnabled = false;
-        tintBtn.classList.remove('active');
     } else {
         synth.tintinnabuliEnabled = true;
         synth.tintinnabuliMode = mode === 'alt' ? 'alternating' : mode;
-        tintBtn.classList.add('active');
     }
 }
 

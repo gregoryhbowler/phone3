@@ -14,9 +14,37 @@
 <body>
     <div id="app">
         <header id="header">
-            <button id="root-btn" class="header-btn" aria-label="Root note">C</button>
-            <button id="scale-btn" class="header-btn" aria-label="Scale">MAJ</button>
-            <button id="tint-btn" class="header-btn" aria-label="Tintinnabuli">T</button>
+            <select id="root-select" class="header-select" aria-label="Root note">
+                <option value="0">C</option>
+                <option value="1">C#</option>
+                <option value="2">D</option>
+                <option value="3">D#</option>
+                <option value="4">E</option>
+                <option value="5">F</option>
+                <option value="6">F#</option>
+                <option value="7">G</option>
+                <option value="8">G#</option>
+                <option value="9">A</option>
+                <option value="10">A#</option>
+                <option value="11">B</option>
+            </select>
+            <select id="scale-select" class="header-select" aria-label="Scale">
+                <option value="major">MAJ</option>
+                <option value="minor">MIN</option>
+                <option value="dorian">DOR</option>
+                <option value="harmonic">HAR</option>
+                <option value="dreamHouse">DRM</option>
+                <option value="pentatonic">PEN</option>
+                <option value="lydian">LYD</option>
+                <option value="mixolydian">MIX</option>
+                <option value="phrygian">PHR</option>
+            </select>
+            <select id="tint-select" class="header-select" aria-label="Tintinnabuli">
+                <option value="off">T</option>
+                <option value="above">T↑</option>
+                <option value="below">T↓</option>
+                <option value="alt">T~</option>
+            </select>
             <button id="record-btn" class="header-btn" aria-label="Record">○</button>
         </header>
         <div id="patch-mode">

@@ -57,38 +57,71 @@ html, body {
     background: #2a2a2a;
 }
 
-/* Root button - shows current root note */
-#root-btn {
-    font-size: 12px;
-    font-weight: bold;
+/* Header select dropdowns */
+.header-select {
+    height: 28px;
+    min-width: 50px;
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    border-radius: 4px;
+    color: #888;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    cursor: pointer;
+    padding: 0 4px;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    text-align: center;
+    text-align-last: center;
+    transition: all 0.15s ease;
 }
 
-#root-btn.active {
+.header-select:focus {
+    outline: none;
+    border-color: #4a4a4a;
+    color: #aaa;
+}
+
+.header-select option {
+    background: #1a1a1a;
+    color: #888;
+    padding: 8px;
+}
+
+/* Root note select */
+#root-select {
+    min-width: 44px;
+    font-size: 12px;
+    font-weight: bold;
     color: #a98;
+}
+
+#root-select:focus {
     border-color: #5a4a3a;
 }
 
-/* Scale button - shows scale abbreviation */
-#scale-btn {
-    font-size: 9px;
+/* Scale select */
+#scale-select {
+    min-width: 50px;
+    font-size: 10px;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    color: #8a9a8a;
 }
 
-#scale-btn.active {
-    color: #8a9a8a;
+#scale-select:focus {
     border-color: #4a5a4a;
 }
 
-/* Tintinnabuli button */
-#tint-btn {
+/* Tintinnabuli select */
+#tint-select {
+    min-width: 44px;
     font-size: 12px;
+    color: #8aa;
 }
 
-#tint-btn.active {
-    color: #8aa;
+#tint-select:focus {
     border-color: #4a5a5a;
-    background: #1a2020;
 }
 
 /* Record button */
