@@ -1771,11 +1771,14 @@ class PatchUnknown {
         // Encode as WAV
         const wavBlob = this.encodeWAV(leftSamples, rightSamples, this.ctx.sampleRate);
 
+        // Generate filename
+        const filename = this.generateRecordingFilename();
+
         // Download
         const url = URL.createObjectURL(wavBlob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `patch-unknown-${Date.now()}.wav`;
+        a.download = filename;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -1783,6 +1786,38 @@ class PatchUnknown {
 
         // Clear buffer
         this.recordedSamples = null;
+    }
+
+    // Generate recording filename with name, key, scale, tempo, random number
+    generateRecordingFilename() {
+        const names = [
+            'karl', 'pierre', 'iannis', 'morton', 'john', 'la', 'paul', 'terry', 'steve', 'philip',
+            'alvin', 'luciano', 'edgar', 'wendy', 'suzanne', 'laurie', 'pauline', 'maryanne', 'eliane',
+            'beatriz', 'hildegard', 'delia', 'daphne', 'bebe', 'annea', 'éliane', 'meredith',
+            'charlemagne', 'tod', 'james', 'brian', 'robert', 'daniel', 'harold', 'gavin', 'christian',
+            'david', 'jon', 'aphex', 'richard', 'autechre', 'sean', 'rob', 'plaid', 'tom', 'mark',
+            'geoff', 'andy', 'chris', 'vladislav', 'ryuichi', 'isao', 'hiroshi', 'susumu', 'fennesz',
+            'rashad', 'kode9', 'burial', 'william', 'francisco', 'giorgio', 'vangelis', 'jean',
+            'michel', 'raymond', 'bernard', 'edgard', 'olivier', 'tristan', 'karlheinz', 'helmut',
+            'peter', 'fred', 'max', 'johann', 'arnold', 'györgy', 'krzysztof', 'henryk', 'wojciech',
+            'robin', 'bruce', 'alan', 'don', 'roger', 'dave', 'bob', 'ross', 'rupert', 'tony', 'hugh',
+            'ray', 'les', 'ikutaro', 'howard', 'edwin', 'walter', 'frank', 'leo', 'moog', 'donald',
+            'herb', 'eurorack', 'dieter', 'makenoise', 'eric', 'michael', 'caterina', 'holly',
+            'julianna', 'sarah', 'kaitlyn', 'jessica', 'emily', 'hildur', 'rival', 'ben', 'tim',
+            'taylor', 'jlin', 'arca', 'sophie', 'oneohtrix', 'huerco', 'felicia', 'fatima', 'mica',
+            'jenny', 'jóhann', 'rafael', 'nico', 'stewart', 'simon', 'julia', 'cosey', 'genesis',
+            'throbbing', 'steven'
+        ];
+
+        const rootNotes = ['c', 'csharp', 'd', 'dsharp', 'e', 'f', 'fsharp', 'g', 'gsharp', 'a', 'asharp', 'b'];
+
+        const name = names[Math.floor(Math.random() * names.length)];
+        const root = rootNotes[this.currentRoot || 0];
+        const scale = (this.currentScale || 'major').toLowerCase();
+        const tempo = Math.round(this.phraseTempo || 120);
+        const randomNum = String(Math.floor(Math.random() * 1000)).padStart(3, '0');
+
+        return `${name}-${root}-${scale}-${tempo}bpm-${randomNum}.wav`;
     }
 
     flattenSamples(chunks) {
