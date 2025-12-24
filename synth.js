@@ -116,6 +116,12 @@ class PatchUnknown {
         this.harmonyLevel = 0.5;      // 0 = sparse, 1 = rich chords
         this.minimalismLevel = 0.5;   // 0 = varied, 1 = repetitive/phasing
 
+        // Drone mode - whether cell voices produce continuous sound
+        this.droneEnabled = Math.random() < 0.5; // 50% chance on init
+
+        // Song mode - 25% chance of more tonal, melodious, song-ready patches
+        this.songMode = Math.random() < 0.25;
+
         // Tintinnabuli mode
         this.tintinnabuliEnabled = false;
         this.tintinnabuliMode = 'above'; // 'above', 'below', 'alternating'
@@ -874,10 +880,15 @@ class PatchUnknown {
         const module = this.createModule(index);
         this.cells[index] = module;
 
+        // If drones are disabled, mute the cell voice immediately
+        if (!this.droneEnabled && module.params && module.params.gain) {
+            module.params.gain.setValueAtTime(0, this.ctx.currentTime);
+        }
+
         // Remember for Basinski-style memory
         this.loopMemory.set(index, {
             activated: this.ctx.currentTime,
-            initialGain: module.params?.gain?.value || 0.1
+            initialGain: this.droneEnabled ? (module.params?.gain?.value || 0.1) : 0
         });
 
         this.rewireConnections();
@@ -2491,11 +2502,27 @@ class PatchUnknown {
 
     // Generate a new phrase
     generatePhrase() {
+        // 25% chance of song mode (more tonal, melodious)
+        this.songMode = Math.random() < 0.25;
+
+        // 50% chance of drone on each new phrase (less in song mode)
+        const newDroneState = this.songMode ? (Math.random() < 0.3) : (Math.random() < 0.5);
+        if (newDroneState !== this.droneEnabled) {
+            this.droneEnabled = newDroneState;
+            this.updateDroneState();
+        }
+
         // Randomly select phrase length (1, 2, 4, or 8 bars)
         const lengths = [1, 2, 4, 8];
-        // Bias toward shorter phrases when more minimalist
-        const lengthWeights = this.minimalismLevel > 0.6 ?
-            [0.3, 0.4, 0.2, 0.1] : [0.15, 0.25, 0.35, 0.25];
+        // Song mode prefers 4 or 8 bar phrases, minimalist prefers shorter
+        let lengthWeights;
+        if (this.songMode) {
+            lengthWeights = [0.05, 0.15, 0.4, 0.4]; // Prefer 4 and 8 bars
+        } else if (this.minimalismLevel > 0.6) {
+            lengthWeights = [0.3, 0.4, 0.2, 0.1];
+        } else {
+            lengthWeights = [0.15, 0.25, 0.35, 0.25];
+        }
 
         let r = Math.random();
         let lengthIdx = 0;
@@ -2526,6 +2553,9 @@ class PatchUnknown {
             case 'ambient':
                 this.generateAmbientPhrase();
                 break;
+            case 'song':
+                this.generateSongPhrase();
+                break;
             default:
                 this.generateMelodicPhrase();
         }
@@ -2534,11 +2564,20 @@ class PatchUnknown {
         if (this.tintinnabuliEnabled && this.currentPhrase.notes.length > 0) {
             this.generateTintinnabuliVoice();
         }
+
+        if (this.songMode) {
+            console.log('SONG MODE: ' + this.currentPhrase.type + ', ' + this.phraseLengthBars + ' bars');
+        }
     }
 
     // Select phrase type based on levels
     selectPhraseType() {
         const r = Math.random();
+
+        // Song mode always uses song phrase type
+        if (this.songMode) {
+            return 'song';
+        }
 
         // High minimalism = more minimalist/ambient phrases
         if (this.minimalismLevel > 0.7) {
@@ -2557,220 +2596,379 @@ class PatchUnknown {
         return 'ambient';
     }
 
-    // Generate melodic phrase - clear rhythmic sequences
+    // Generate melodic phrase - REAL sequencer-style motifs
     generateMelodicPhrase() {
         const scale = this.scales[this.currentScale] || this.scales.major;
         const notes = [];
-        let currentDegree = Math.floor(scale.length / 2) + Math.floor(Math.random() * 3);
 
-        // More defined rhythmic patterns - think sequencer
+        // Create a SHORT MOTIF (2-4 notes) that defines the phrase
+        const motifLength = 2 + Math.floor(Math.random() * 3);
+        const motif = [];
+
+        // Start on a chord tone (root, 3rd, or 5th)
+        const chordTones = [0, 2, 4];
+        let startDegree = chordTones[Math.floor(Math.random() * 3)] + scale.length; // Middle octave
+
+        // Build the motif with musical intervals
+        let currentDegree = startDegree;
+        for (let i = 0; i < motifLength; i++) {
+            motif.push(currentDegree);
+            // Musical movement: steps and small skips
+            const intervals = [-2, -1, -1, 0, 1, 1, 2, 3]; // Favor steps, allow small skips
+            currentDegree += intervals[Math.floor(Math.random() * intervals.length)];
+            currentDegree = Math.max(scale.length - 2, Math.min(scale.length * 2 + 2, currentDegree));
+        }
+
+        // SEQUENCER-STYLE: 16th note grid with the motif repeating
+        const stepDuration = 0.25; // 16th notes
+        const stepsPerBar = 16;
+        const totalSteps = this.currentPhrase.length * 4; // 4 steps per beat
+
+        // Choose a rhythmic pattern (which steps are active)
         const rhythmPatterns = [
-            [0.5, 0.5, 0.5, 0.5],  // 16th notes
-            [0.5, 0.5, 1],         // 16th-16th-8th
-            [1, 1, 1, 1],          // 8th notes
-            [1, 0.5, 0.5],         // 8th-16th-16th
-            [0.5, 0.5, 0.5, 0.5, 1, 1], // mixed
+            [1,0,1,0, 1,0,1,0, 1,0,1,0, 1,0,1,0], // Every other 16th
+            [1,0,0,1, 0,0,1,0, 1,0,0,1, 0,0,1,0], // Syncopated
+            [1,1,0,1, 1,0,1,0, 1,1,0,1, 1,0,1,0], // Dense
+            [1,0,1,0, 1,0,0,0, 1,0,1,0, 1,0,0,0], // Simple pulse
+            [1,0,0,0, 1,0,0,0, 1,0,0,0, 1,0,0,0], // Quarter notes
+            [1,1,1,0, 1,1,1,0, 1,1,1,0, 1,1,1,0], // Triplet feel
+            [1,0,1,1, 0,1,0,1, 1,0,1,1, 0,1,0,1], // Funk
         ];
+        const pattern = rhythmPatterns[Math.floor(Math.random() * rhythmPatterns.length)];
 
-        let beat = 0;
-        let patternIndex = Math.floor(Math.random() * rhythmPatterns.length);
+        // Play the motif on the rhythmic grid
+        let motifIndex = 0;
+        for (let step = 0; step < totalSteps; step++) {
+            const patternStep = step % stepsPerBar;
 
-        while (beat < this.currentPhrase.length) {
-            const pattern = rhythmPatterns[patternIndex];
+            if (pattern[patternStep]) {
+                // Get the current motif note
+                const degree = motif[motifIndex % motif.length];
 
-            for (const duration of pattern) {
-                if (beat >= this.currentPhrase.length) break;
-
-                // Melodic movement - more stepwise for clear sequences
-                const movement = Math.random();
-                if (movement < 0.5) {
-                    currentDegree += Math.random() < 0.5 ? 1 : -1; // Step up or down
-                } else if (movement < 0.75) {
-                    currentDegree += Math.random() < 0.5 ? 2 : -2; // Skip
-                } else if (movement < 0.9) {
-                    // Jump to chord tone
-                    const chordTones = [0, 2, 4];
-                    currentDegree = chordTones[Math.floor(Math.random() * 3)] +
-                                   Math.floor(currentDegree / scale.length) * scale.length;
+                // Occasional octave shift for variation
+                let finalDegree = degree;
+                if (step > stepsPerBar && Math.random() < 0.15) {
+                    finalDegree += (Math.random() < 0.5 ? scale.length : -scale.length);
                 }
-                // else repeat
-
-                // Keep in range (2 octaves)
-                currentDegree = Math.max(0, Math.min(scale.length * 2 - 1, currentDegree));
-
-                // Lower rest probability for denser sequences
-                if (Math.random() > 0.92) {
-                    beat += duration;
-                    continue;
-                }
+                finalDegree = Math.max(0, Math.min(scale.length * 3 - 1, finalDegree));
 
                 notes.push({
-                    beat,
-                    degree: currentDegree,
-                    duration,
-                    velocity: 0.6 + Math.random() * 0.25 // Higher velocity
+                    beat: step * stepDuration,
+                    degree: finalDegree,
+                    duration: stepDuration * 0.8, // Slightly shorter for separation
+                    velocity: 0.7 + Math.random() * 0.2
                 });
 
-                beat += duration;
-            }
-
-            // Occasionally switch pattern for variety
-            if (Math.random() < 0.3) {
-                patternIndex = Math.floor(Math.random() * rhythmPatterns.length);
+                motifIndex++;
             }
         }
 
         this.currentPhrase.notes = notes;
     }
 
-    // Generate chordal phrase - beds of harmony
+    // Generate chordal phrase - arpeggiated chord progressions
     generateChordalPhrase() {
         const scale = this.scales[this.currentScale] || this.scales.major;
+        const notes = [];
         const chords = [];
 
-        // Chord sizes based on harmony level
-        const chordSizes = this.harmonyLevel > 0.6 ? [3, 4, 5] : [2, 3];
+        // Common chord progressions (scale degrees)
+        const progressions = [
+            [0, 3, 4, 0],      // I - IV - V - I
+            [0, 5, 3, 4],      // I - vi - IV - V
+            [0, 4, 5, 3],      // I - V - vi - IV
+            [0, 2, 4, 0],      // I - iii - V - I
+            [0, 3, 0, 4],      // I - IV - I - V
+            [5, 3, 0, 4],      // vi - IV - I - V
+        ];
+        const progression = progressions[Math.floor(Math.random() * progressions.length)];
 
-        // Number of chord changes
-        const numChords = Math.max(2, Math.floor(this.currentPhrase.length / 2));
-        const beatsPerChord = this.currentPhrase.length / numChords;
+        // Arpeggio patterns (which chord tones to play in order)
+        const arpeggioPatterns = [
+            [0, 1, 2, 1],         // Up-down
+            [0, 1, 2, 2, 1, 0],   // Up-down full
+            [2, 1, 0, 1],         // Down-up
+            [0, 2, 1, 2],         // Root-5th-3rd-5th
+            [0, 1, 2, 0],         // Up-repeat root
+        ];
+        const arpPattern = arpeggioPatterns[Math.floor(Math.random() * arpeggioPatterns.length)];
 
-        for (let i = 0; i < numChords; i++) {
-            const size = chordSizes[Math.floor(Math.random() * chordSizes.length)];
-            const rootDegree = Math.floor(Math.random() * scale.length);
-            const degrees = [rootDegree];
+        // 16th note grid
+        const stepDuration = 0.25;
+        const stepsPerChord = Math.floor(this.currentPhrase.length * 4 / progression.length);
 
-            // Build chord (stacked thirds in scale degrees)
-            for (let j = 1; j < size; j++) {
-                degrees.push((rootDegree + j * 2) % (scale.length * 2));
-            }
+        let step = 0;
+        for (let chordIdx = 0; chordIdx < progression.length; chordIdx++) {
+            const rootDegree = progression[chordIdx];
 
+            // Build chord (root, 3rd, 5th)
+            const chordDegrees = [rootDegree, rootDegree + 2, rootDegree + 4];
+
+            // Add chord for visualization
             chords.push({
-                beat: i * beatsPerChord,
-                degrees,
-                duration: beatsPerChord,
-                velocity: 0.35 + Math.random() * 0.15
+                beat: step * stepDuration,
+                degrees: chordDegrees.map(d => d + scale.length),
+                duration: stepsPerChord * stepDuration,
+                velocity: 0.3
             });
+
+            // Arpeggiate through the chord
+            for (let s = 0; s < stepsPerChord; s++) {
+                const arpIndex = s % arpPattern.length;
+                const chordTone = arpPattern[arpIndex];
+                const degree = chordDegrees[chordTone % 3] + scale.length; // Middle octave
+
+                // Add some rhythmic variation
+                if (s % 2 === 0 || Math.random() < 0.7) {
+                    notes.push({
+                        beat: step * stepDuration,
+                        degree: degree,
+                        duration: stepDuration * 0.7,
+                        velocity: s % 4 === 0 ? 0.8 : 0.6 // Accent on downbeats
+                    });
+                }
+                step++;
+            }
         }
 
+        this.currentPhrase.notes = notes;
         this.currentPhrase.chords = chords;
-
-        // Also add a sparse melody over chords if harmony is moderate
-        if (this.harmonyLevel < 0.8 && Math.random() < 0.6) {
-            this.generateSparseMelody();
-        }
     }
 
-    // Generate sparse melody for ambient/chordal phrases
+    // Generate sparse melody - occasional accents over texture
     generateSparseMelody() {
         const scale = this.scales[this.currentScale] || this.scales.major;
-        const numNotes = 2 + Math.floor(Math.random() * 4);
 
-        for (let i = 0; i < numNotes; i++) {
-            const beat = Math.random() * this.currentPhrase.length;
-            const degree = Math.floor(Math.random() * scale.length * 2);
-
-            this.currentPhrase.notes.push({
-                beat,
-                degree,
-                duration: 1 + Math.random() * 2,
-                velocity: 0.4 + Math.random() * 0.2
-            });
+        // Add melodic accents on strong beats
+        const accents = [0, 4, 8, 12]; // Every bar
+        for (const beat of accents) {
+            if (beat < this.currentPhrase.length) {
+                const degree = [0, 2, 4][Math.floor(Math.random() * 3)] + scale.length * 2; // High octave
+                this.currentPhrase.notes.push({
+                    beat,
+                    degree,
+                    duration: 1,
+                    velocity: 0.75
+                });
+            }
         }
-
-        // Sort by beat time
-        this.currentPhrase.notes.sort((a, b) => a.beat - b.beat);
     }
 
-    // Generate minimalist phrase - Reich/Glass style repetition
+    // Generate minimalist phrase - Reich/Glass style strict repetition with phasing
     generateMinimalistPhrase() {
         const scale = this.scales[this.currentScale] || this.scales.major;
         const notes = [];
 
-        // Create a short cell (3-6 notes) that repeats
-        const cellLength = 3 + Math.floor(Math.random() * 4);
-        const cell = [];
+        // Reich-style: Create a FIXED pattern that repeats EXACTLY
+        // Classic minimalist cells - short, repetitive, hypnotic
+        const cellPatterns = [
+            [0, 2, 4, 2],           // Simple triad arpeggio
+            [0, 0, 2, 4],           // Root emphasis
+            [4, 2, 0, 2, 4, 2],     // Down-up
+            [0, 2, 0, 4, 0, 2],     // Root anchor
+            [0, 4, 2, 4],           // Skip pattern
+            [0, 1, 2, 1, 0, -1],    // Stepwise
+        ];
+        const cellPattern = cellPatterns[Math.floor(Math.random() * cellPatterns.length)];
 
-        let degree = Math.floor(Math.random() * scale.length) + Math.floor(scale.length / 2);
-        for (let i = 0; i < cellLength; i++) {
-            const durations = [0.5, 0.5, 1, 1, 0.25, 0.25];
-            cell.push({
-                degree,
-                duration: durations[Math.floor(Math.random() * durations.length)]
+        // Fixed rhythm - 8th notes (classic minimalism)
+        const stepDuration = 0.5;
+
+        // Calculate how many times the cell repeats
+        const totalSteps = this.currentPhrase.length * 2; // 2 steps per beat (8th notes)
+        const baseDegree = scale.length; // Middle octave root
+
+        // Create the repeating pattern - NO VARIATION, pure repetition
+        for (let step = 0; step < totalSteps; step++) {
+            const cellIndex = step % cellPattern.length;
+            const intervalFromRoot = cellPattern[cellIndex];
+            const degree = baseDegree + intervalFromRoot;
+
+            // Ensure degree is in valid range
+            const finalDegree = Math.max(0, Math.min(scale.length * 3 - 1, degree));
+
+            // Consistent velocity with subtle accent on cell start
+            const velocity = cellIndex === 0 ? 0.75 : 0.6;
+
+            notes.push({
+                beat: step * stepDuration,
+                degree: finalDegree,
+                duration: stepDuration * 0.85, // Slightly legato
+                velocity
             });
-            degree += Math.floor((Math.random() - 0.5) * 4);
-            degree = Math.max(0, Math.min(scale.length * 2 - 1, degree));
-        }
-
-        // Repeat the cell with gradual variation
-        let beat = 0;
-        let variation = 0;
-        let repeatCount = 0;
-
-        while (beat < this.currentPhrase.length) {
-            for (const note of cell) {
-                if (beat >= this.currentPhrase.length) break;
-
-                // Gradual variation (Reich-style additive process)
-                let adjustedDegree = note.degree;
-                if (variation > 0.3 && Math.random() < variation * 0.25) {
-                    adjustedDegree += Math.random() < 0.5 ? 1 : -1;
-                }
-
-                // Occasional rest in later repetitions
-                if (repeatCount > 2 && Math.random() < 0.1) {
-                    beat += note.duration;
-                    continue;
-                }
-
-                notes.push({
-                    beat,
-                    degree: Math.max(0, Math.min(scale.length * 2 - 1, adjustedDegree)),
-                    duration: note.duration,
-                    velocity: 0.45 + Math.random() * 0.15
-                });
-
-                beat += note.duration;
-            }
-
-            variation = Math.min(1, variation + 0.08);
-            repeatCount++;
         }
 
         this.currentPhrase.notes = notes;
     }
 
-    // Generate ambient phrase - sparse, drone-like
+    // Generate ambient phrase - slow evolving melodic line over drone
     generateAmbientPhrase() {
         const scale = this.scales[this.currentScale] || this.scales.major;
         const notes = [];
 
-        // Very sparse notes with long durations
-        const numNotes = 2 + Math.floor(Math.random() * 3);
-        const noteSpacing = this.currentPhrase.length / numNotes;
+        // Slow melodic line - one note every 2 beats
+        const stepDuration = 2;
+        const numSteps = Math.floor(this.currentPhrase.length / stepDuration);
 
-        for (let i = 0; i < numNotes; i++) {
-            const beat = i * noteSpacing + (Math.random() - 0.5) * noteSpacing * 0.3;
-            const degree = Math.floor(Math.random() * scale.length);
-            const duration = 2 + Math.random() * 4; // Long notes
+        // Start on root, move slowly
+        let currentDegree = scale.length; // Middle octave root
+        const melodicPath = [0, 2, 4, 2, 0, -1, 0, 4]; // Gentle melodic contour
+
+        for (let i = 0; i < numSteps; i++) {
+            const pathIndex = i % melodicPath.length;
+            currentDegree = scale.length + melodicPath[pathIndex];
 
             notes.push({
-                beat: Math.max(0, beat),
-                degree,
-                duration,
-                velocity: 0.25 + Math.random() * 0.2 // Softer
+                beat: i * stepDuration,
+                degree: currentDegree,
+                duration: stepDuration * 1.2, // Overlapping for legato
+                velocity: 0.5
             });
         }
 
-        this.currentPhrase.notes = notes.sort((a, b) => a.beat - b.beat);
+        this.currentPhrase.notes = notes;
 
-        // Add drone chord on root
+        // Sustained drone chord
         this.currentPhrase.chords = [{
             beat: 0,
-            degrees: [0, Math.floor(scale.length / 2)], // Root + fifth-ish
+            degrees: [0, 4, scale.length], // Root, 5th, octave
             duration: this.currentPhrase.length,
-            velocity: 0.2
+            velocity: 0.25
         }];
+    }
+
+    // Generate song phrase - TONAL, MELODIOUS, SONG-READY
+    // This creates proper musical phrases with clear melodic contour,
+    // singable melodies, and strong harmonic support
+    generateSongPhrase() {
+        const scale = this.scales[this.currentScale] || this.scales.major;
+        const notes = [];
+        const chords = [];
+
+        // Use consonant scales for song mode
+        const consonantScales = ['major', 'minor', 'pentatonic', 'dorian'];
+        if (!consonantScales.includes(this.currentScale)) {
+            // Temporarily use major for more tonal results
+            this.setScale('major');
+        }
+
+        // Set a comfortable, musical tempo
+        this.phraseTempo = 80 + Math.random() * 40; // 80-120 BPM
+
+        // Create a SINGABLE MELODY with clear contour
+        // Use common melodic patterns: arch, descent, question-answer
+        const melodyPatterns = [
+            // Ascending arch (up then down)
+            [0, 1, 2, 3, 4, 3, 2, 1],
+            // Descending with resolution
+            [4, 3, 2, 1, 2, 1, 0, 0],
+            // Question-answer (up, pause, down to resolve)
+            [0, 2, 4, 4, 2, 1, 0, 0],
+            // Stepwise with leap
+            [0, 1, 2, 1, 0, 2, 4, 2],
+            // Pentatonic-friendly
+            [0, 2, 4, 2, 0, 2, 4, 5],
+            // Pop melody contour
+            [2, 2, 4, 4, 3, 2, 1, 0],
+            // Ballad style
+            [0, 0, 2, 4, 4, 2, 0, 0],
+        ];
+
+        const melodyPattern = melodyPatterns[Math.floor(Math.random() * melodyPatterns.length)];
+
+        // Strong chord progressions (in scale degrees)
+        const progressions = [
+            [0, 3, 4, 0],      // I - IV - V - I (classic)
+            [0, 5, 3, 4],      // I - vi - IV - V (pop)
+            [0, 4, 5, 3],      // I - V - vi - IV (axis)
+            [0, 3, 0, 4],      // I - IV - I - V
+            [0, 2, 3, 4],      // I - iii - IV - V
+        ];
+        const chordProgression = progressions[Math.floor(Math.random() * progressions.length)];
+
+        // Calculate beats per chord
+        const beatsPerChord = Math.floor(this.currentPhrase.length / chordProgression.length);
+
+        // Generate chords with arpeggiation for richness
+        chordProgression.forEach((root, chordIdx) => {
+            const chordBeat = chordIdx * beatsPerChord;
+
+            // Full chord on downbeat
+            chords.push({
+                beat: chordBeat,
+                degrees: [root, root + 2, root + 4], // Triad
+                duration: beatsPerChord,
+                velocity: 0.7
+            });
+        });
+
+        // Generate melody notes aligned with chord changes
+        // 8th note rhythm for singability
+        const notesPerBar = 8; // 8th notes
+        const totalNotes = this.currentPhrase.length * 2; // 2 eighth notes per beat
+
+        for (let i = 0; i < totalNotes; i++) {
+            const beat = i * 0.5; // 8th notes
+
+            // Determine which chord we're over
+            const chordIdx = Math.floor(beat / beatsPerChord) % chordProgression.length;
+            const chordRoot = chordProgression[chordIdx];
+
+            // Get melody note from pattern (loop through pattern)
+            const patternIdx = i % melodyPattern.length;
+            let degree = melodyPattern[patternIdx];
+
+            // Transpose melody to fit current chord (voice leading)
+            // Keep melody in comfortable range
+            degree = degree + scale.length; // Middle octave
+
+            // Add some rhythmic variation - not every 8th note
+            const rhythmPatterns = [
+                [1, 0, 1, 1, 1, 0, 1, 0], // Syncopated
+                [1, 1, 1, 0, 1, 1, 1, 0], // Strong beats
+                [1, 0, 1, 0, 1, 0, 1, 1], // Off-beat emphasis
+                [1, 1, 0, 1, 1, 0, 1, 0], // Swing feel
+            ];
+            const rhythmPattern = rhythmPatterns[Math.floor(Math.random() * rhythmPatterns.length)];
+
+            if (rhythmPattern[i % rhythmPattern.length] === 1) {
+                notes.push({
+                    beat: beat,
+                    degree: degree,
+                    duration: 0.5, // 8th note
+                    velocity: (i % 4 === 0) ? 0.9 : 0.7 // Accent downbeats
+                });
+            }
+        }
+
+        // Add melodic ornaments - passing tones, neighbor tones
+        if (Math.random() < 0.5) {
+            const ornamentedNotes = [];
+            notes.forEach((note, idx) => {
+                ornamentedNotes.push(note);
+
+                // Sometimes add a quick grace note before
+                if (idx < notes.length - 1 && Math.random() < 0.2) {
+                    const nextNote = notes[idx + 1];
+                    const gap = nextNote.beat - note.beat;
+                    if (gap >= 0.5) {
+                        // Add passing tone
+                        const passingDegree = Math.round((note.degree + nextNote.degree) / 2);
+                        ornamentedNotes.push({
+                            beat: note.beat + gap * 0.75,
+                            degree: passingDegree,
+                            duration: 0.25,
+                            velocity: 0.5
+                        });
+                    }
+                }
+            });
+            this.currentPhrase.notes = ornamentedNotes;
+        } else {
+            this.currentPhrase.notes = notes;
+        }
+
+        this.currentPhrase.chords = chords;
     }
 
     // Generate tintinnabuli T-voice (Arvo Pärt style)
@@ -2798,8 +2996,8 @@ class PatchUnknown {
             return {
                 beat: note.beat,
                 degree: melodyOctave * scale.length + tDegree,
-                duration: note.duration,
-                velocity: note.velocity * 0.6 // T-voice slightly quieter
+                duration: note.duration * 1.2, // T-voice sustains slightly longer
+                velocity: note.velocity * 0.95 // T-voice nearly as loud as melody for pronounced effect
             };
         });
     }
@@ -2866,8 +3064,8 @@ class PatchUnknown {
         const sustainTime = note.duration * (60 / this.phraseTempo) * 0.7;
         const releaseTime = 0.08;
 
-        // VERY LOUD - 0.4 for clear sequence sound
-        const peakGain = note.velocity * 0.4;
+        // VERY LOUD - 0.7 for punchy, prominent sequence sound
+        const peakGain = note.velocity * 0.7;
 
         voice.gain.gain.cancelScheduledValues(now);
         voice.gain.gain.setValueAtTime(0, now);
@@ -2894,8 +3092,8 @@ class PatchUnknown {
             const sustainTime = chord.duration * (60 / this.phraseTempo) * 0.8;
             const releaseTime = 0.2;
 
-            // LOUD - 0.25 for clear chord sound
-            const peakGain = chord.velocity * 0.25;
+            // LOUD - 0.45 for punchy chord sound
+            const peakGain = chord.velocity * 0.45;
 
             voice.gain.gain.cancelScheduledValues(now);
             voice.gain.gain.setValueAtTime(0, now);
@@ -2908,21 +3106,26 @@ class PatchUnknown {
         });
     }
 
-    // Trigger a tintinnabuli T-voice note - clear bell-like tone
+    // Trigger a tintinnabuli T-voice note - PRONOUNCED bell-like tone
     triggerTVoiceNote(note) {
         const scale = this.scales[this.currentScale] || this.scales.major;
         const freq = this.degreeToFrequency(note.degree, scale);
         const voice = this.getAvailableVoice(this.tVoicePool);
 
-        voice.osc.frequency.setTargetAtTime(freq, this.ctx.currentTime, 0.002);
+        // T-voice often sounds better an octave higher for bell-like clarity
+        const tFreq = freq * (Math.random() < 0.5 ? 2 : 1);
+        voice.osc.frequency.setTargetAtTime(tFreq, this.ctx.currentTime, 0.002);
+
+        // Use triangle or sine for pure, bell-like T-voice tone
+        voice.osc.type = Math.random() < 0.7 ? 'triangle' : 'sine';
 
         const now = this.ctx.currentTime;
-        const attackTime = 0.005;
-        const sustainTime = note.duration * (60 / this.phraseTempo) * 0.6;
-        const releaseTime = 0.12;
+        const attackTime = 0.003; // Faster attack for bell-like clarity
+        const sustainTime = note.duration * (60 / this.phraseTempo) * 0.8; // Longer sustain
+        const releaseTime = 0.25; // Longer release for bell decay
 
-        // Clear but slightly softer than melody - 0.2
-        const peakGain = note.velocity * 0.2;
+        // LOUD T-voice for pronounced tintinnabuli effect - 0.6
+        const peakGain = note.velocity * 0.6;
 
         voice.gain.gain.cancelScheduledValues(now);
         voice.gain.gain.setValueAtTime(0, now);
@@ -2944,27 +3147,51 @@ class PatchUnknown {
 
     // ============== NEW CORNER BEHAVIORS ==============
 
-    // Upper left (cell 0): More Harmony - IMMEDIATE and DRAMATIC
+    // Play an IMMEDIATE chord burst for instant feedback
+    playImmediateChord(degrees, velocity = 0.8) {
+        const scale = this.scales[this.currentScale] || this.scales.major;
+        const now = this.ctx.currentTime;
+
+        degrees.forEach((degree, i) => {
+            const freq = this.degreeToFrequency(degree + scale.length, scale);
+            const voice = this.getAvailableVoice(this.chordVoicePool);
+
+            voice.osc.frequency.setValueAtTime(freq, now);
+
+            // VERY LOUD, punchy attack for dramatic effect
+            voice.gain.gain.cancelScheduledValues(now);
+            voice.gain.gain.setValueAtTime(0, now);
+            voice.gain.gain.linearRampToValueAtTime(velocity * 0.8, now + 0.01);
+            voice.gain.gain.setValueAtTime(velocity * 0.6, now + 0.15);
+            voice.gain.gain.linearRampToValueAtTime(0, now + 0.8);
+
+            voice.busy = true;
+            voice.releaseTime = now + 0.8;
+        });
+    }
+
+    // Upper left (cell 0): More Harmony - INSTANT chord burst + arpeggio
     nudgeHarmony() {
         console.log('=== HARMONY BUTTON PRESSED ===');
 
-        // Strong increase in harmony level
-        this.harmonyLevel = Math.min(1, this.harmonyLevel + 0.3);
+        // INSTANT AUDIO FEEDBACK - play a big chord NOW
+        this.playImmediateChord([0, 2, 4, 7], 0.9); // Major 7 chord
 
-        // Decrease minimalism
-        this.minimalismLevel = Math.max(0, this.minimalismLevel - 0.15);
+        // Mute the cell-based drone sounds
+        this.fadeDownCellVoices();
 
-        // Always shift toward harmonic-friendly scales
+        // Set up for harmonic content
+        this.harmonyLevel = Math.min(1, this.harmonyLevel + 0.4);
+        this.minimalismLevel = Math.max(0, this.minimalismLevel - 0.2);
+
+        // Harmonic scales
         const harmonicScales = ['major', 'harmonic', 'dreamHouse', 'dorian'];
         this.setScale(harmonicScales[Math.floor(Math.random() * harmonicScales.length)]);
 
-        // Reduce cell-based sounds, boost phrase sounds
-        this.fadeDownCellVoices();
-
-        // IMMEDIATELY generate a new chordal phrase
+        // Generate arpeggio phrase
         this.phrasePosition = 0;
         this.currentPhrase = {
-            length: 16, // 4 bars
+            length: 16,
             notes: [],
             chords: [],
             tintinnabuli: [],
@@ -2972,48 +3199,55 @@ class PatchUnknown {
         };
         this.generateChordalPhrase();
 
-        // Also add a melody over the chords
-        this.generateSparseMelody();
-
-        // If tintinnabuli is on, generate T-voice
         if (this.tintinnabuliEnabled && this.currentPhrase.notes.length > 0) {
             this.generateTintinnabuliVoice();
         }
 
-        // Slower, more majestic tempo
-        this.phraseTempo = 70 + Math.random() * 30;
+        // Medium tempo for arpeggios
+        this.phraseTempo = 100 + Math.random() * 20;
 
-        // Immediately trigger first notes
-        this.playNotesAtBeat(0);
-
-        console.log('HARMONY: level=' + this.harmonyLevel.toFixed(2) + ', scale=' + this.currentScale +
-                   ', chords=' + this.currentPhrase.chords.length + ', notes=' + this.currentPhrase.notes.length);
+        console.log('HARMONY: ' + this.currentPhrase.notes.length + ' notes, tempo=' + this.phraseTempo.toFixed(0));
     }
 
-    // Upper right (cell 7): More Minimalist - IMMEDIATE Reich/Glass effect
+    // Upper right (cell 7): More Minimalist - INSTANT repeating pattern
     nudgeMinimalist() {
         console.log('=== MINIMALIST BUTTON PRESSED ===');
 
-        // Strong increase in minimalism
-        this.minimalismLevel = Math.min(1, this.minimalismLevel + 0.3);
+        // INSTANT AUDIO FEEDBACK - rapid fire notes
+        const scale = this.scales[this.currentScale] || this.scales.major;
+        const now = this.ctx.currentTime;
 
-        // Decrease harmony
-        this.harmonyLevel = Math.max(0, this.harmonyLevel - 0.15);
-
-        // Reduce cell-based sounds, boost phrase sounds
-        this.fadeDownCellVoices();
-
-        // Reich-style: create NOTICEABLE phasing between voices
-        const detuneAmount = 1 + Math.random() * 3; // More noticeable cents
-        this.melodyVoicePool.forEach((voice, i) => {
-            const detune = (i - this.melodyVoicePool.length / 2) * detuneAmount;
-            voice.osc.detune.setTargetAtTime(detune, this.ctx.currentTime, 0.1);
+        // Play first 4 notes of pattern immediately
+        [0, 2, 4, 2].forEach((degree, i) => {
+            setTimeout(() => {
+                const voice = this.getAvailableVoice(this.melodyVoicePool);
+                const freq = this.degreeToFrequency(degree + scale.length, scale);
+                voice.osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                voice.gain.gain.cancelScheduledValues(this.ctx.currentTime);
+                voice.gain.gain.setValueAtTime(0, this.ctx.currentTime);
+                voice.gain.gain.linearRampToValueAtTime(0.85, this.ctx.currentTime + 0.005);
+                voice.gain.gain.linearRampToValueAtTime(0, this.ctx.currentTime + 0.15);
+                voice.busy = true;
+                voice.releaseTime = this.ctx.currentTime + 0.15;
+            }, i * 100); // 100ms apart - fast!
         });
 
-        // IMMEDIATELY generate a new minimalist phrase
+        // Mute cell sounds
+        this.fadeDownCellVoices();
+
+        this.minimalismLevel = Math.min(1, this.minimalismLevel + 0.4);
+        this.harmonyLevel = Math.max(0, this.harmonyLevel - 0.2);
+
+        // Reich-style phasing
+        this.melodyVoicePool.forEach((voice, i) => {
+            const detune = (i - 2) * 2;
+            voice.osc.detune.setValueAtTime(detune, now);
+        });
+
+        // Generate minimalist phrase
         this.phrasePosition = 0;
         this.currentPhrase = {
-            length: 8, // 2 bars - short repeating cell
+            length: 8,
             notes: [],
             chords: [],
             tintinnabuli: [],
@@ -3021,26 +3255,59 @@ class PatchUnknown {
         };
         this.generateMinimalistPhrase();
 
-        // If tintinnabuli is on, generate T-voice
         if (this.tintinnabuliEnabled && this.currentPhrase.notes.length > 0) {
             this.generateTintinnabuliVoice();
         }
 
-        // Steady, hypnotic tempo
-        this.phraseTempo = 100 + Math.random() * 40;
+        // Fast, driving tempo
+        this.phraseTempo = 120 + Math.random() * 40;
 
-        // Immediately trigger first notes
-        this.playNotesAtBeat(0);
-
-        console.log('MINIMALIST: level=' + this.minimalismLevel.toFixed(2) + ', tempo=' + this.phraseTempo.toFixed(0) +
-                   ', notes=' + this.currentPhrase.notes.length);
+        console.log('MINIMALIST: ' + this.currentPhrase.notes.length + ' notes, tempo=' + this.phraseTempo.toFixed(0));
     }
 
-    // Lower left (cell 56): Timbral Randomization - DRAMATIC change
+    // Lower left (cell 56): Timbral Randomization - DRAMATIC instant change
     randomizeTimbre() {
         console.log('=== TIMBRE BUTTON PRESSED ===');
 
-        // Completely randomize all timbral parameters
+        const waveforms = ['sine', 'triangle', 'sawtooth', 'square'];
+        const now = this.ctx.currentTime;
+
+        // INSTANT: change all voice timbres immediately
+        this.melodyVoicePool.forEach(voice => {
+            voice.osc.type = waveforms[Math.floor(Math.random() * waveforms.length)];
+            voice.filter.frequency.setValueAtTime(500 + Math.random() * 5000, now);
+            voice.filter.Q.setValueAtTime(0.5 + Math.random() * 10, now);
+        });
+
+        this.chordVoicePool.forEach(voice => {
+            voice.osc.type = waveforms[Math.floor(Math.random() * waveforms.length)];
+            voice.filter.frequency.setValueAtTime(300 + Math.random() * 3000, now);
+            voice.filter.Q.setValueAtTime(0.5 + Math.random() * 6, now);
+        });
+
+        this.tVoicePool.forEach(voice => {
+            voice.osc.type = waveforms[Math.floor(Math.random() * 2)];
+            voice.filter.frequency.setValueAtTime(1000 + Math.random() * 4000, now);
+        });
+
+        // INSTANT AUDIO FEEDBACK - play the current phrase note with new timbre
+        const scale = this.scales[this.currentScale] || this.scales.major;
+        const testDegrees = [0, 4, 7]; // Root, 5th, octave - demonstrates timbre
+        testDegrees.forEach((degree, i) => {
+            setTimeout(() => {
+                const voice = this.getAvailableVoice(this.melodyVoicePool);
+                const freq = this.degreeToFrequency(degree + scale.length, scale);
+                voice.osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                voice.gain.gain.cancelScheduledValues(this.ctx.currentTime);
+                voice.gain.gain.setValueAtTime(0, this.ctx.currentTime);
+                voice.gain.gain.linearRampToValueAtTime(0.8, this.ctx.currentTime + 0.01);
+                voice.gain.gain.linearRampToValueAtTime(0, this.ctx.currentTime + 0.3);
+                voice.busy = true;
+                voice.releaseTime = this.ctx.currentTime + 0.3;
+            }, i * 80);
+        });
+
+        // Randomize global parameters
         this.currentWaveformBias = Math.random();
         this.globalFilterCutoff = 0.1 + Math.random() * 0.8;
         this.globalFilterResonance = Math.random() * 0.7;
@@ -3052,47 +3319,9 @@ class PatchUnknown {
         this.applyGlobalFM();
         this.applyGlobalDistortion();
 
-        // COMPLETELY randomize ALL voice pool timbres
-        const waveforms = ['sine', 'triangle', 'sawtooth', 'square'];
-
-        this.melodyVoicePool.forEach(voice => {
-            voice.osc.type = waveforms[Math.floor(Math.random() * waveforms.length)];
-            voice.filter.frequency.setTargetAtTime(
-                500 + Math.random() * 5000,
-                this.ctx.currentTime, 0.05
-            );
-            voice.filter.Q.setTargetAtTime(
-                0.5 + Math.random() * 8,
-                this.ctx.currentTime, 0.05
-            );
-        });
-
-        this.tVoicePool.forEach(voice => {
-            voice.osc.type = waveforms[Math.floor(Math.random() * 2)]; // Simpler for T-voice
-            voice.filter.frequency.setTargetAtTime(
-                1000 + Math.random() * 4000,
-                this.ctx.currentTime, 0.05
-            );
-        });
-
-        this.chordVoicePool.forEach(voice => {
-            voice.osc.type = waveforms[Math.floor(Math.random() * waveforms.length)];
-            voice.filter.frequency.setTargetAtTime(
-                300 + Math.random() * 3000,
-                this.ctx.currentTime, 0.05
-            );
-            voice.filter.Q.setTargetAtTime(
-                0.5 + Math.random() * 5,
-                this.ctx.currentTime, 0.05
-            );
-        });
-
         // Dramatic reverb change
         if (this.reverbSend) {
-            this.reverbSend.gain.setTargetAtTime(
-                0.05 + Math.random() * 0.5,
-                this.ctx.currentTime, 0.1
-            );
+            this.reverbSend.gain.setValueAtTime(0.05 + Math.random() * 0.5, now);
         }
 
         // Random tempo shift
@@ -3124,6 +3353,29 @@ class PatchUnknown {
         this.krellDensity = Math.max(0.05, this.krellDensity * 0.5);
 
         console.log('Cell voices faded down, krellDensity=' + this.krellDensity.toFixed(3));
+    }
+
+    // Update all cell voices based on droneEnabled state
+    updateDroneState() {
+        const now = this.ctx.currentTime;
+        const targetGain = this.droneEnabled ? 0.1 : 0;
+        const fadeTime = 0.5; // Smooth transition
+
+        this.cells.forEach((cell, i) => {
+            if (cell && cell.params && cell.params.gain) {
+                cell.params.gain.setTargetAtTime(targetGain, now, fadeTime);
+            }
+            // Also handle partial gains for drone voices
+            if (cell && cell.partialGains) {
+                cell.partialGains.forEach(g => {
+                    try {
+                        g.gain.setTargetAtTime(this.droneEnabled ? 0.05 : 0, now, fadeTime);
+                    } catch (e) {}
+                });
+            }
+        });
+
+        console.log('Drone state: ' + (this.droneEnabled ? 'ON' : 'OFF'));
     }
 
     // Set root note from semitones (0-11, where 0 = C)
